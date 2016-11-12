@@ -1,5 +1,5 @@
 // --
-// Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+// Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 // --
 // This software comes with ABSOLUTELY NO WARRANTY. For details, see
 // the enclosed file COPYING for license information (AGPL). If you
@@ -51,8 +51,8 @@ Core.UI = (function (TargetNS) {
                     .attr('aria-controls', ContentDivID)
                     .attr('aria-expanded', $WidgetElement.hasClass('Expanded'));
             })
-            .unbind('click.WidgetToggle')
-            .bind('click.WidgetToggle', function () {
+            .off('click.WidgetToggle')
+            .on('click.WidgetToggle', function (Event) {
                 var $WidgetElement = $(this).closest("div.Header").parent('div'),
                     Animate = $WidgetElement.hasClass('Animate'),
                     $that = $(this);
@@ -67,7 +67,7 @@ Core.UI = (function (TargetNS) {
                         Core.App.Publish('Event.UI.ToggleWidget', [$WidgetElement]);
                 }
 
-                if (Animate && Core.Config.Get('AnimationEnabled')) {
+                if (Animate) {
                     $WidgetElement.addClass('AnimationRunning').find('.Content').slideToggle("fast", function () {
                         ToggleWidget();
                         $WidgetElement.removeClass('AnimationRunning');
@@ -76,7 +76,7 @@ Core.UI = (function (TargetNS) {
                     ToggleWidget();
                 }
 
-                return false;
+                Event.preventDefault();
             });
     };
 
@@ -89,8 +89,8 @@ Core.UI = (function (TargetNS) {
      */
     TargetNS.InitMessageBoxClose = function () {
         $(".MessageBox > a.Close")
-            .unbind('click.MessageBoxClose')
-            .bind('click.MessageBoxClose', function (Event) {
+            .off('click.MessageBoxClose')
+            .on('click.MessageBoxClose', function (Event) {
                 $(this).parent().remove();
                 Event.preventDefault();
             });
@@ -187,7 +187,7 @@ Core.UI = (function (TargetNS) {
         }
 
         // e.g. 'table td.Checkbox' or 'div.Checkbox'
-        $Element.unbind('click.CheckboxSelection').bind('click.CheckboxSelection', function (Event) {
+        $Element.off('click.CheckboxSelection').on('click.CheckboxSelection', function (Event) {
             var $Checkbox = $(this).find('input[type="checkbox"]');
 
             if (!$Checkbox.length) {
@@ -209,49 +209,54 @@ Core.UI = (function (TargetNS) {
     };
 
     /**
-     * @private
-     * @name ShakeMe
+     * @name Animate
      * @memberof Core.UI
      * @function
-     * @param {jQueryObject} $id - The element to shake.
-     * @param {Array} Position - Array of positions where the bo should be moved to.
-     * @param {Number} PostionEnd - The end position.
+     * @param {jQueryObject} $Element - The element to animate.
+     * @param {String} Type - The animation type as defined in Core.Animations.css, e.g. 'Shake'
      * @description
-     *      "Shakes" the element.
+     *      Animate an element on demand using a css-based animation of the given type
      */
-    function ShakeMe($id, Position, PostionEnd) {
-        var PositionStart = Position.shift();
-        $id.css('left', PositionStart + 'px');
-        if (Position.length > 0) {
-            setTimeout(function () {
-                ShakeMe($id, Position, PostionEnd);
-            }, PostionEnd);
+    TargetNS.Animate = function ($Element, Type) {
+        if (!$Element.length || !Type) {
+            return;
         }
-        else {
-            try {
-                $id.css('position', 'static');
-            }
-            catch (Event) {
-                // no code here
-                $.noop(Event);
-            }
-        }
-    }
+        $Element.addClass('Animation' + Type);
+    };
 
     /**
-     * @name Shake
+     * @name InitMasterAction
      * @memberof Core.UI
      * @function
-     * @param {jQueryObject} $id - The element to shake.
      * @description
-     *      "Shakes" the element.
+     *      Extend click event to the whole table row.
      */
-    TargetNS.Shake = function ($id) {
-        var Position = [15, 30, 15, 0, -15, -30, -15, 0];
-        Position = Position.concat(Position.concat(Position));
-        $id.css('position', 'relative');
-        ShakeMe($id, Position, 20);
+    TargetNS.InitMasterAction = function () {
+        $('.MasterAction').click(function (Event) {
+            var $MasterActionLink = $(this).find('.MasterActionLink');
+
+            // only act if the link was not clicked directly
+            if (Event.target !== $MasterActionLink.get(0)) {
+                window.location = $MasterActionLink.attr('href');
+                return false;
+            }
+        });
     };
+
+    /**
+     * @name Init
+     * @memberof Core.UI
+     * @function
+     * @description
+     *      Initializes the namespace.
+     */
+    TargetNS.Init = function() {
+        Core.UI.InitWidgetActionToggle();
+        Core.UI.InitMessageBoxClose();
+        Core.UI.InitMasterAction();
+    };
+
+    Core.Init.RegisterNamespace(TargetNS, 'APP_GLOBAL');
 
     return TargetNS;
 }(Core.UI || {}));

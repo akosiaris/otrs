@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -28,22 +28,16 @@ our @ObjectDependencies = (
 
 Kernel::System::ACL::DB::ACL.pm
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 ACL DB ACL backend
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create a ACL object. Do not use it directly, instead use:
 
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $ACLObject = $Kernel::OM->Get('Kernel::System::ACL::DB::ACL');
 
 =cut
@@ -67,7 +61,7 @@ sub new {
     return $Self;
 }
 
-=item ACLAdd()
+=head2 ACLAdd()
 
 add new ACL
 
@@ -207,7 +201,7 @@ sub ACLAdd {
     return $ID;
 }
 
-=item ACLDelete()
+=head2 ACLDelete()
 
 delete an ACL
 
@@ -266,7 +260,7 @@ sub ACLDelete {
     return 1;
 }
 
-=item ACLGet()
+=head2 ACLGet()
 
 get ACL attributes
 
@@ -414,7 +408,7 @@ sub ACLGet {
     return \%Data;
 }
 
-=item ACLUpdate()
+=head2 ACLUpdate()
 
 update ACL attributes
 
@@ -575,7 +569,7 @@ sub ACLUpdate {
     return 1;
 }
 
-=item ACLList()
+=head2 ACLList()
 
 get an ACL list
 
@@ -589,6 +583,7 @@ get an ACL list
     $List = {
         1 => 'NameOfACL',
     }
+
 =cut
 
 sub ACLList {
@@ -654,7 +649,7 @@ sub ACLList {
     return \%Data;
 }
 
-=item ACLListGet()
+=head2 ACLListGet()
 
 get an ACL list with all ACL details
 
@@ -769,7 +764,7 @@ sub ACLListGet {
     return \@Data;
 }
 
-=item ACLsNeedSync()
+=head2 ACLsNeedSync()
 
 Check if there are unsynchronized ACLs
 
@@ -778,6 +773,7 @@ Check if there are unsynchronized ACLs
     Returns:
 
     $SyncCount = 0 || Number of ALCs that need to be synced
+
 =cut
 
 sub ACLsNeedSync {
@@ -800,7 +796,7 @@ sub ACLsNeedSync {
     return $NeedSync;
 }
 
-=item ACLsNeedSyncReset()
+=head2 ACLsNeedSyncReset()
 
 Reset synchronization information for ACLs.
 
@@ -814,7 +810,7 @@ sub ACLsNeedSyncReset {
     return 1;
 }
 
-=item ACLDump()
+=head2 ACLDump()
 
 gets a complete ACL information dump from the DB
 
@@ -965,7 +961,7 @@ EOF
     return $FileLocation;
 }
 
-=item ACLImport()
+=head2 ACLImport()
 
 import an ACL YAML file/content
 
@@ -1090,7 +1086,7 @@ sub ACLImport {
 
 =cut
 
-=item _ACLItemOutput()
+=head2 _ACLItemOutput()
 
 converts an ACL structure to perl code suitable to be saved on a perl file.
 
@@ -1170,15 +1166,15 @@ sub _ACLItemOutput {
     $Output =~ s{\[empty\]}{}xmsg;
 
     my $Name = $Param{Key};
-    $Name =~ s{\"}{\\"}xmsg;
-    my $Key = '$Self->{TicketAcl}->{"' . $Name . '"}';
+    $Name =~ s{\'}{\\'}xmsg;
+    my $Key = '$Self->{TicketAcl}->{\'' . $Name . '\'}';
 
     $Output =~ s{\$VAR1}{$Key}mxs;
 
     return $Output . "\n";
 }
 
-=item _ACLMigrateFrom33()
+=head2 _ACLMigrateFrom33()
 
 Updates ACLs structure my changing the Possible->Action hash ref to a PossibleNot->Action array ref
 with just the elements that where set to 0 in the original ACL:
@@ -1254,7 +1250,7 @@ sub _ACLMigrateFrom33 {
     return $ACL if ref $ACL->{ConfigChange}->{Possible}->{Action} ne 'HASH';
 
     # convert old hash into an array using only the keys set to 0, and skip those that are set
-    # to 1, set them as PossibleNot and delete the Possible->Action section form the ACL.
+    # to 1, set them as PossibleNot and delete the Possible->Action section from the ACL.
     my @NewAction = grep { $ACL->{ConfigChange}->{Possible}->{Action}->{$_} == 0 }
         sort keys %{ $ACL->{ConfigChange}->{Possible}->{Action} };
 
@@ -1266,7 +1262,7 @@ sub _ACLMigrateFrom33 {
 
 1;
 
-=back
+=end Internal:
 
 =head1 TERMS AND CONDITIONS
 

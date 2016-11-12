@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 use Mail::Address;
 
 our $ObjectManagerDisabled = 1;
@@ -45,8 +46,8 @@ sub Run {
     # check needed stuff
     if ( !$Self->{TicketID} ) {
         return $LayoutObject->ErrorScreen(
-            Message => 'No TicketID is given!',
-            Comment => 'Please contact the admin.',
+            Message => Translatable('No TicketID is given!'),
+            Comment => Translatable('Please contact the administrator.'),
         );
     }
 
@@ -68,7 +69,7 @@ sub Run {
     # error screen, don't show ticket
     if ( !$Access ) {
         return $LayoutObject->NoPermission(
-            Message    => "You need $Config->{Permission} permissions!",
+            Message => $LayoutObject->{LanguageObject}->Translate( 'You need %s permissions!', $Config->{Permission} ),
             WithHeader => 'yes',
         );
     }
@@ -135,9 +136,8 @@ sub Run {
                     BodyClass => 'Popup',
                 );
                 $Output .= $LayoutObject->Warning(
-                    Message => $LayoutObject->{LanguageObject}
-                        ->Get('Sorry, you need to be the ticket owner to perform this action.'),
-                    Comment => $LayoutObject->{LanguageObject}->Get('Please change the owner first.'),
+                    Message => Translatable('Sorry, you need to be the ticket owner to perform this action.'),
+                    Comment => Translatable('Please change the owner first.'),
                 );
                 $Output .= $LayoutObject->Footer(
                     Type => 'Small',
@@ -378,7 +378,7 @@ sub Run {
     for my $DynamicFieldConfig ( @{$DynamicField} ) {
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         $DynamicFieldValues{ $DynamicFieldConfig->{Name} } =
             $DynamicFieldBackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
@@ -434,6 +434,48 @@ sub Run {
         my %StateData = $Kernel::OM->Get('Kernel::System::State')->StateGet( ID => $GetParam{StateID} );
 
         my %Error;
+
+        # get check item object
+        my $CheckItemObject = $Kernel::OM->Get('Kernel::System::CheckItem');
+
+        # check some values
+        LINE:
+        for my $Line (qw(To Cc Bcc)) {
+            next LINE if !$GetParam{$Line};
+            for my $Email ( Mail::Address->parse( $GetParam{$Line} ) ) {
+                if ( !$CheckItemObject->CheckEmail( Address => $Email->address() ) ) {
+                    $Error{ $Line . 'ErrorType' } = $Line . $CheckItemObject->CheckErrorType() . 'ServerErrorMsg';
+                    $Error{ $Line . 'Invalid' }   = 'ServerError';
+                }
+                my $IsLocal = $Kernel::OM->Get('Kernel::System::SystemAddress')->SystemAddressIsLocalAddress(
+                    Address => $Email->address()
+                );
+                if ($IsLocal) {
+                    $Error{ $Line . 'IsLocalAddress' } = 'ServerError';
+                }
+            }
+        }
+
+        if ( $Error{ToIsLocalAddress} ) {
+            $LayoutObject->Block(
+                Name => 'ToIsLocalAddressServerErrorMsg',
+                Data => \%GetParam,
+            );
+        }
+
+        if ( $Error{CcIsLocalAddress} ) {
+            $LayoutObject->Block(
+                Name => 'CcIsLocalAddressServerErrorMsg',
+                Data => \%GetParam,
+            );
+        }
+
+        if ( $Error{BccIsLocalAddress} ) {
+            $LayoutObject->Block(
+                Name => 'BccIsLocalAddressServerErrorMsg',
+                Data => \%GetParam,
+            );
+        }
 
         # If is an action about attachments
         my $IsUpload = 0;
@@ -549,8 +591,7 @@ sub Run {
         my %ArticleParam;
 
         # run compose modules
-        if ( ref $ConfigObject->Get('Ticket::Frontend::ArticleComposeModule') eq 'HASH' )
-        {
+        if ( ref $ConfigObject->Get('Ticket::Frontend::ArticleComposeModule') eq 'HASH' ) {
 
             # use ticket QueueID in compose modules
             $GetParam{QueueID} = $Ticket{QueueID};
@@ -564,18 +605,50 @@ sub Run {
                 }
                 my $Object = $Jobs{$Job}->{Module}->new( %{$Self}, Debug => $Self->{Debug} );
 
+                my $Multiple;
+
                 # get params
-                for ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
-                    $GetParam{$_} = $ParamObject->GetParam( Param => $_ );
+                PARAMETER:
+                for my $Parameter ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
+                    if ( $Jobs{$Job}->{ParamType} && $Jobs{$Job}->{ParamType} ne 'Single' ) {
+                        @{ $GetParam{$Parameter} } = $ParamObject->GetArray( Param => $Parameter );
+                        $Multiple = 1;
+                        next PARAMETER;
+                    }
+
+                    $GetParam{$Parameter} = $ParamObject->GetParam( Param => $Parameter );
                 }
 
                 # run module
-                $Object->Run( %GetParam, Config => $Jobs{$Job} );
+                $Object->Run(
+                    %GetParam,
+                    StoreNew => 1,
+                    Config   => $Jobs{$Job}
+                );
+
+                # get options that have been removed from the selection
+                # and add them back to the selection so that the submit
+                # will contain options that were hidden from the agent
+                my $Key = $Object->Option( %GetParam, Config => $Jobs{$Job} );
+
+                if ( $Object->can('GetOptionsToRemoveAJAX') ) {
+                    my @RemovedOptions = $Object->GetOptionsToRemoveAJAX(%GetParam);
+                    if (@RemovedOptions) {
+                        if ($Multiple) {
+                            for my $RemovedOption (@RemovedOptions) {
+                                push @{ $GetParam{$Key} }, $RemovedOption;
+                            }
+                        }
+                        else {
+                            $GetParam{$Key} = shift @RemovedOptions;
+                        }
+                    }
+                }
 
                 # ticket params
                 %ArticleParam = (
                     %ArticleParam,
-                    $Object->ArticleOption( %GetParam, Config => $Jobs{$Job} ),
+                    $Object->ArticleOption( %GetParam, %ArticleParam, Config => $Jobs{$Job} ),
                 );
 
                 # get errors
@@ -650,9 +723,11 @@ sub Run {
 
                 if ( !IsHashRefWithData($ValidationResult) ) {
                     return $LayoutObject->ErrorScreen(
-                        Message =>
-                            "Could not perform validation on field $DynamicFieldConfig->{Label}!",
-                        Comment => 'Please contact the admin.',
+                        Message => $LayoutObject->{LanguageObject}->Translate(
+                            'Could not perform validation on field %s!',
+                            $DynamicFieldConfig->{Label},
+                        ),
+                        Comment => Translatable('Please contact the administrator.'),
                     );
                 }
 
@@ -789,7 +864,8 @@ sub Run {
         # error page
         if ( !$ArticleTypeID ) {
             return $LayoutObject->ErrorScreen(
-                Comment => 'Can not determine the ArticleType, Please contact the admin.',
+                Message => Translatable('Can not determine the ArticleType!'),
+                Comment => Translatable('Please contact the administrator.'),
             );
         }
 
@@ -925,8 +1001,17 @@ sub Run {
                     Debug => $Self->{Debug},
                 );
 
+                my $Multiple;
+
                 # get params
+                PARAMETER:
                 for my $Parameter ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
+                    if ( $Jobs{$Job}->{ParamType} && $Jobs{$Job}->{ParamType} ne 'Single' ) {
+                        @{ $GetParam{$Parameter} } = $ParamObject->GetArray( Param => $Parameter );
+                        $Multiple = 1;
+                        next PARAMETER;
+                    }
+
                     $GetParam{$Parameter} = $ParamObject->GetParam( Param => $Parameter );
                 }
 
@@ -938,16 +1023,28 @@ sub Run {
                     %GetParam = ( %GetParam, $Object->GetParamAJAX(%GetParam) )
                 }
 
+                # get options that have to be removed from the selection visible
+                # to the agent. These options will be added again on submit.
+                if ( $Object->can('GetOptionsToRemoveAJAX') ) {
+                    my @OptionsToRemove = $Object->GetOptionsToRemoveAJAX(%GetParam);
+
+                    for my $OptionToRemove (@OptionsToRemove) {
+                        delete $Data{$OptionToRemove};
+                    }
+                }
+
                 my $Key = $Object->Option( %GetParam, Config => $Jobs{$Job} );
                 if ($Key) {
                     push(
                         @ExtendedData,
                         {
-                            Name        => $Key,
-                            Data        => \%Data,
-                            SelectedID  => $GetParam{$Key},
-                            Translation => 1,
-                            Max         => 150,
+                            Name         => $Key,
+                            Data         => \%Data,
+                            SelectedID   => $GetParam{$Key},
+                            Translation  => 1,
+                            PossibleNone => 1,
+                            Multiple     => $Multiple,
+                            Max          => 150,
                         }
                     );
                 }
@@ -958,7 +1055,7 @@ sub Run {
             %GetParam,
         );
 
-        # update Dynamc Fields Possible Values via AJAX
+        # update Dynamic Fields Possible Values via AJAX
         my @DynamicFieldAJAX;
 
         # cycle trough the activated Dynamic Fields for this screen
@@ -1103,6 +1200,11 @@ sub Run {
         $Data{OrigFromName} =~ s/<.*>|\(.*\)|\"|;|,//g;
         $Data{OrigFromName} =~ s/( $)|(  $)//g;
 
+        # Fallback to OrigFrom if realname part is empty.
+        if ( !$Data{OrigFromName} ) {
+            $Data{OrigFromName} = $Data{OrigFrom};
+        }
+
         # get customer data
         my %Customer;
         if ( $Ticket{CustomerUserID} ) {
@@ -1190,7 +1292,7 @@ sub Run {
         else {
 
             # prepare body, subject, ReplyTo ...
-            # rewrap body if exists
+            # re-wrap body if exists
             if ( $Data{Body} ) {
                 $Data{Body} =~ s/\t/ /g;
                 my $Quote = $ConfigObject->Get('Ticket::Frontend::Quote');
@@ -1219,11 +1321,6 @@ sub Run {
                     $Data{Body} .= "\n---- $EndMessage ---\n";
                 }
             }
-        }
-
-        # check if Cc recipients should be used
-        if ( $ConfigObject->Get('Ticket::Frontend::ComposeExcludeCcRecipients') ) {
-            $Data{Cc} = '';
         }
 
         # get system address object
@@ -1302,7 +1399,7 @@ sub Run {
                 # add customers database address to Cc
                 else {
                     $Output .= $LayoutObject->Notify(
-                        Info => "Customer user automatically added in Cc.",
+                        Info => Translatable("Customer user automatically added in Cc."),
                     );
                     if ( $Data{Cc} ) {
                         $Data{Cc} .= ', ' . $Customer{UserEmail};
@@ -1521,8 +1618,8 @@ sub Run {
         my $References = ( $Data{MessageID} || '' ) . ( $Data{References} || '' );
 
         # run compose modules
-        if ( ref $ConfigObject->Get('Ticket::Frontend::ArticleComposeModule') eq 'HASH' )
-        {
+        if ( ref $ConfigObject->Get('Ticket::Frontend::ArticleComposeModule') eq 'HASH' ) {
+
             my %Jobs = %{ $ConfigObject->Get('Ticket::Frontend::ArticleComposeModule') };
             for my $Job ( sort keys %Jobs ) {
 
@@ -1533,8 +1630,14 @@ sub Run {
                 my $Object = $Jobs{$Job}->{Module}->new( %{$Self}, Debug => $Self->{Debug} );
 
                 # get params
-                for ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
-                    $GetParam{$_} = $ParamObject->GetParam( Param => $_ );
+                PARAMETER:
+                for my $Parameter ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
+                    if ( $Jobs{$Job}->{ParamType} && $Jobs{$Job}->{ParamType} ne 'Single' ) {
+                        @{ $GetParam{$Parameter} } = $ParamObject->GetArray( Param => $Parameter );
+                        next PARAMETER;
+                    }
+
+                    $GetParam{$Parameter} = $ParamObject->GetParam( Param => $Parameter );
                 }
 
                 # run module
@@ -1568,6 +1671,7 @@ sub Run {
             References       => "$References",
             TicketBackType   => $TicketBackType,
             DynamicFieldHTML => \%DynamicFieldHTML,
+            ArticleTypeID    => $GetParam{ArticleTypeID},    # don't use the ArticleID from the previous article
         );
         $Output .= $LayoutObject->Footer(
             Type => 'Small',
@@ -1595,14 +1699,6 @@ sub _Mask {
     my $DynamicFieldNames = $Self->_GetFieldsToUpdate(
         OnlyDynamicFields => 1
     );
-
-    # create a string with the quoted dynamic field names separated by commas
-    if ( IsArrayRefWithData($DynamicFieldNames) ) {
-        FIELD:
-        for my $Field ( @{$DynamicFieldNames} ) {
-            $Param{DynamicFieldNamesStrg} .= ", '" . $Field . "'";
-        }
-    }
 
     # get needed objects
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
@@ -1644,8 +1740,8 @@ sub _Mask {
         }
 
         my %Selected;
-        if ( $Self->{GetParam}->{ArticleTypeID} ) {
-            $Selected{SelectedID} = $Self->{GetParam}->{ArticleTypeID};
+        if ( $Param{ArticleTypeID} ) {
+            $Selected{SelectedID} = $Param{ArticleTypeID};
         }
         else {
             $Selected{SelectedValue} = $Config->{DefaultArticleType};
@@ -1663,11 +1759,6 @@ sub _Mask {
             Data => \%Param,
         );
     }
-
-    # build customer search auto-complete field
-    $LayoutObject->Block(
-        Name => 'CustomerSearchAutoComplete',
-    );
 
     # prepare errors!
     if ( $Param{Errors} ) {
@@ -1813,39 +1904,33 @@ sub _Mask {
         );
     }
 
+    my @EmailAddressesCc;
+
     # set preselected values for Cc field
     if ( $Param{Cc} && $Param{Cc} ne '' && !$CustomerCounterCc ) {
-        $LayoutObject->Block(
-            Name => 'PreFilledCc',
-        );
 
         # split To values
-        for my $Email ( Mail::Address->parse( $Param{Cc} ) ) {
-            $LayoutObject->Block(
-                Name => 'PreFilledCcRow',
-                Data => {
-                    Email => $Email->address(),
-                },
-            );
-        }
+        @EmailAddressesCc = map { $_->address() } ( Mail::Address->parse( $Param{Cc} ) );
+
+        $LayoutObject->AddJSData(
+            Key   => 'EmailAddressesCc',
+            Value => \@EmailAddressesCc,
+        );
+
         $Param{Cc} = '';
     }
 
     # set preselected values for To field
-    if ( $Param{To} ne '' && !$CustomerCounter ) {
-        $LayoutObject->Block(
-            Name => 'PreFilledTo',
-        );
+    if ( defined $Param{To} && $Param{To} ne '' && !$CustomerCounter ) {
 
         # split To values
-        for my $Email ( Mail::Address->parse( $Param{To} ) ) {
-            $LayoutObject->Block(
-                Name => 'PreFilledToRow',
-                Data => {
-                    Email => $Email->address(),
-                },
-            );
-        }
+        my @EmailAddressesTo = map { $_->address() } ( Mail::Address->parse( $Param{To} ) );
+
+        $LayoutObject->AddJSData(
+            Key   => 'EmailAddressesTo',
+            Value => \@EmailAddressesTo,
+        );
+
         $Param{To} = '';
     }
 
@@ -1970,8 +2055,8 @@ sub _Mask {
         $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
         $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-        $LayoutObject->Block(
-            Name => 'RichText',
+        # set up rich text editor
+        $LayoutObject->SetRichTextParameters(
             Data => \%Param,
         );
     }
@@ -1993,6 +2078,11 @@ sub _Mask {
             Data => $Attachment,
         );
     }
+
+    $LayoutObject->AddJSData(
+        Key   => 'DynamicFieldNames',
+        Value => $DynamicFieldNames,
+    );
 
     # create & return output
     return $LayoutObject->Output(

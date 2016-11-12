@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -91,11 +91,14 @@ sub Run {
         KEY:
         for my $Key ( sort keys %Data ) {
             if ( ($Key) && ( defined( $Data{$Key} ) ) && $Key ne 'SessionID' ) {
-                if ( $Key =~ /^_/ ) {
+                if ( ref $Data{$Key} ) {
+                    $Data{$Key} = '[...]';
+                }
+                elsif ( $Key =~ /^_/ ) {
                     next KEY;
                 }
-                if ( $Key =~ /Password|Pw/ ) {
-                    $Data{$Key} = 'xxxxxxxx';
+                elsif ( $Key =~ /Password|Pw/ ) {
+                    $Data{$Key} = '[xxx]';
                 }
                 else {
                     $Data{$Key} = $LayoutObject->Ascii2Html( Text => $Data{$Key} );
@@ -111,9 +114,6 @@ sub Run {
                         SystemTime => $Data{UserSessionStart},
                     );
                     $Data{$Key} = "$TimeStamp / $Age h ";
-                }
-                if ( $Key eq 'Config' || $Key eq 'CompanyConfig' ) {
-                    $Data{$Key} = 'HASH of data';
                 }
                 if ( $Data{$Key} eq ';' ) {
                     $Data{$Key} = '';
@@ -139,6 +139,10 @@ sub Run {
 
         $Output .= $LayoutObject->Output(
             TemplateFile => 'AdminSession',
+            Data         => {
+                Action => $Self->{Subaction},
+                %Data,
+            },
         );
 
         $Output .= $LayoutObject->Footer();
@@ -164,16 +168,22 @@ sub Run {
             Name => 'Overview',
         );
 
+        $LayoutObject->Block(
+            Name => 'Filter'
+        );
+
         for my $SessionID (@List) {
             my $List = '';
             my %Data = $SessionObject->GetSessionIDData( SessionID => $SessionID );
-            $MetaData{"$Data{UserType}Session"}++;
-            if ( !$MetaData{"$Data{UserLogin}"} ) {
-                $MetaData{"$Data{UserType}SessionUniq"}++;
-                $MetaData{"$Data{UserLogin}"} = 1;
+            if ( $Data{UserType} && $Data{UserLogin} ) {
+                $MetaData{"$Data{UserType}Session"}++;
+                if ( !$MetaData{"$Data{UserLogin}"} ) {
+                    $MetaData{"$Data{UserType}SessionUniq"}++;
+                    $MetaData{"$Data{UserLogin}"} = 1;
+                }
             }
 
-            $Data{UserType} = 'Agent' if ( $Data{UserType} ne 'Customer' );
+            $Data{UserType} = 'Agent' if ( !$Data{UserType} || $Data{UserType} ne 'Customer' );
 
             # create blocks
             $LayoutObject->Block(

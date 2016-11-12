@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -10,6 +10,8 @@ package Kernel::Modules::CustomerTicketAttachment;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -36,8 +38,8 @@ sub Run {
     if ( !$FileID || !$ArticleID ) {
         my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
         $Output .= $LayoutObject->CustomerError(
-            Message => 'FileID and ArticleID are needed!',
-            Comment => 'Please contact your administrator'
+            Message => Translatable('FileID and ArticleID are needed!'),
+            Comment => Translatable('Please contact the administrator.'),
         );
         $LogObject->Log(
             Message  => 'FileID and ArticleID are needed!',
@@ -58,8 +60,8 @@ sub Run {
     if ( !$Article{TicketID} ) {
         my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
         $Output .= $LayoutObject->CustomerError(
-            Message => "No TicketID for ArticleID ($ArticleID)!",
-            Comment => 'Please contact your administrator'
+            Message => $LayoutObject->{LanguageObject}->Translate( 'No TicketID for ArticleID (%s)!', $ArticleID ),
+            Comment => Translatable('Please contact the administrator.'),
         );
         $LogObject->Log(
             Message  => "No TicketID for ArticleID ($ArticleID)!",
@@ -88,8 +90,8 @@ sub Run {
     if ( !%Data ) {
         my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
         $Output .= $LayoutObject->CustomerError(
-            Message => "No such attachment ($FileID)!",
-            Comment => 'Please contact your administrator'
+            Message => $LayoutObject->{LanguageObject}->Translate( 'No such attachment (%s)!', $FileID ),
+            Comment => Translatable('Please contact the administrator.'),
         );
         $LogObject->Log(
             Message  => "No such attachment ($FileID)! May be an attack!!!",
@@ -110,7 +112,10 @@ sub Run {
 
         # just return for non-html attachment (e. g. images)
         if ( $Data{ContentType} !~ /text\/html/i ) {
-            return $LayoutObject->Attachment(%Data);
+            return $LayoutObject->Attachment(
+                %Data,
+                Sandbox => 1,
+            );
         }
 
         # unset filename for inline viewing
@@ -144,11 +149,17 @@ sub Run {
         );
 
         # return html attachment
-        return $LayoutObject->Attachment(%Data);
+        return $LayoutObject->Attachment(
+            %Data,
+            Sandbox => 1,
+        );
     }
 
     # download it AttachmentDownloadType is configured
-    return $LayoutObject->Attachment(%Data);
+    return $LayoutObject->Attachment(
+        %Data,
+        Sandbox => 1,
+    );
 }
 
 1;

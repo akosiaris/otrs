@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -22,7 +22,14 @@ my $ConfigObject    = $Kernel::OM->Get('Kernel::Config');
 my $HTMLUtilsObject = $Kernel::OM->Get('Kernel::System::HTMLUtils');
 my $MainObject      = $Kernel::OM->Get('Kernel::System::Main');
 my $TicketObject    = $Kernel::OM->Get('Kernel::System::Ticket');
-my $HelperObject    = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
 # set config
 $ConfigObject->Set(
@@ -160,7 +167,7 @@ for my $Count ( 1 .. 2 ) {
     );
 }
 
-# tests for handling encrypted emails
+# tests for handling signed / encrypted emails
 my @Tests = (
     {
         Name           => 'Encrypted Body, Plain Attachments',
@@ -180,12 +187,22 @@ my @Tests = (
         ArticleSubject => 'PGP Test 2013-07-02-1977-3',
         ArticleBody    => "This is only a test.\n",
     },
+    {
+        Name               => 'Signed 7bit (Short lines)',
+        EmailFile          => '/scripts/test/sample/PGP/Signed_PGP_Test_7bit.eml',
+        CheckSignatureOnly => 1,
+    },
+    {
+        Name               => 'Signed Quoted-Printable (Long Lines)',
+        EmailFile          => '/scripts/test/sample/PGP/Signed_PGP_Test_QuotedPrintable.eml',
+        CheckSignatureOnly => 1,
+    },
 );
 
 # to store added tickets into the system (will be deleted later)
 my @AddedTickets;
 
-# lookp table to get a better idea of postmaster result
+# lookup table to get a better idea of postmaster result
 my %PostMasterReturnLookup = (
     0 => 'error (also false)',
     1 => 'new ticket created',
@@ -195,6 +212,7 @@ my %PostMasterReturnLookup = (
     5 => 'ignored (because of X-OTRS-Ignore header)',
 );
 
+TEST:
 for my $Test (@Tests) {
 
     # read email content (from a file)
@@ -243,7 +261,7 @@ for my $Test (@Tests) {
             UserID        => 1,
         );
 
-        # use ArticleCheck::PGP to decript the article
+        # use ArticleCheck::PGP to decrypt the article
         my $CheckObject = Kernel::Output::HTML::ArticleCheck::PGP->new(
             ArticleID => $ArticleIDs[0],
             UserID    => 1,
@@ -252,6 +270,29 @@ for my $Test (@Tests) {
 
         # sanity destroy object
         $CheckObject = undef;
+
+        if ( $Test->{CheckSignatureOnly} ) {
+
+            RESULTITEM:
+            for my $ResultItem (@CheckResult) {
+
+                next RESULTITEM if $ResultItem->{Key} ne 'Signed';
+
+                $Self->True(
+                    $ResultItem->{SignatureFound},
+                    "$Test->{Name} - Signature found with true",
+                );
+
+                $Self->True(
+                    $ResultItem->{Successful},
+                    "$Test->{Name} - Signature verify with true",
+                );
+
+                last RESULTITEM;
+            }
+
+            next TEST;
+        }
 
         # check actual contents (subject and body)
         my %Article = $TicketObject->ArticleGet(
@@ -429,7 +470,7 @@ my @TestVariations;
 
 for my $Test (@Tests) {
     push @TestVariations, {
-        Name        => $Test->{Name} . " sign only (Detached)",
+        Name        => $Test->{Name} . " (old API) sign only (Detached)",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From => 'unittest@example.org',
@@ -445,7 +486,7 @@ for my $Test (@Tests) {
     };
 
     push @TestVariations, {
-        Name        => $Test->{Name} . " crypt only (Detached)",
+        Name        => $Test->{Name} . " (old API) crypt only (Detached)",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From  => 'unittest2@example.org',
@@ -461,7 +502,7 @@ for my $Test (@Tests) {
     };
 
     push @TestVariations, {
-        Name        => $Test->{Name} . " sign and crypt (Detached)",
+        Name        => $Test->{Name} . " (old API) sign and crypt (Detached)",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From => 'unittest2@example.org',
@@ -484,6 +525,109 @@ for my $Test (@Tests) {
     # TODO: currently inline signatures tests does not work as OTRS does not save the signature
     #    in the Article{Body}, the body remains intact after sending the email, only the email has
     #    the signature
+
+    # here starts the tests for new API
+
+    push @TestVariations, {
+        Name        => $Test->{Name} . " sign only (Detached)",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest@example.org',
+            To            => 'unittest@example.org',
+            EmailSecurity => {
+                Backend => 'PGP',
+                Method  => 'Detached',
+                SignKey => $Check{1}->{KeyPrivate},
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 0,
+    };
+
+    push @TestVariations, {
+        Name        => $Test->{Name} . " crypt only (Detached)",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest2@example.org',
+            To            => 'unittest2@example.org',
+            EmailSecurity => {
+                Backend     => 'PGP',
+                Method      => 'Detached',
+                EncryptKeys => [ $Check{2}->{Key} ],
+            },
+        },
+        VerifySignature  => 0,
+        VerifyDecryption => 1,
+    };
+
+    push @TestVariations, {
+        Name        => $Test->{Name} . " sign and crypt (Detached)",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest2@example.org',
+            To            => 'unittest2@example.org',
+            EmailSecurity => {
+                Backend     => 'PGP',
+                Method      => 'Detached',
+                SignKey     => $Check{2}->{KeyPrivate},
+                EncryptKeys => [ $Check{2}->{Key} ],
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 1,
+    };
+
+    # start tests with 2 recipients
+
+    push @TestVariations, {
+        Name        => $Test->{Name} . " sign only (Detached)",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest@example.org',
+            To            => 'unittest@example.org, unittest2@example.org',
+            EmailSecurity => {
+                Backend => 'PGP',
+                Method  => 'Detached',
+                SignKey => $Check{1}->{KeyPrivate},
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 0,
+    };
+
+    push @TestVariations, {
+        Name        => $Test->{Name} . " crypt only (Detached)",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest2@example.org',
+            To            => 'unittest@example.org, unittest2@example.org',
+            EmailSecurity => {
+                Backend     => 'PGP',
+                Method      => 'Detached',
+                EncryptKeys => [ $Check{1}->{Key}, $Check{2}->{Key} ],
+            },
+        },
+        VerifySignature  => 0,
+        VerifyDecryption => 1,
+    };
+
+    push @TestVariations, {
+        Name        => $Test->{Name} . " sign and crypt (Detached)",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest2@example.org',
+            To            => 'unittest@example.org, unittest2@example.org',
+            EmailSecurity => {
+                Backend     => 'PGP',
+                Method      => 'Detached',
+                SignKey     => $Check{2}->{KeyPrivate},
+                EncryptKeys => [ $Check{1}->{Key}, $Check{2}->{Key} ],
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 1,
+    };
+
 }
 
 my $TicketID = $TicketObject->TicketCreate(
@@ -535,9 +679,6 @@ for my $Test (@TestVariations) {
     );
 
     my @CheckResult = $CheckObject->Check( Article => \%Article );
-
-    #use Data::Dumper;
-    #print STDERR "Dump: " . Dumper(\@CheckResult) . "\n";
 
     if ( $Test->{VerifySignature} ) {
         my $SignatureVerified =
@@ -626,21 +767,6 @@ for my $Test (@TestVariations) {
     }
 }
 
-# delete the tickets
-for my $TicketID (@AddedTickets) {
-
-    my $TicketDelete = $TicketObject->TicketDelete(
-        TicketID => $TicketID,
-        UserID   => 1,
-    );
-
-    # sanity check
-    $Self->True(
-        $TicketDelete,
-        "TicketDelete() successful for Ticket ID $TicketID",
-    );
-}
-
 # delete PGP keys
 for my $Count ( 1 .. 2 ) {
     my @Keys = $PGPObject->KeySearch(
@@ -674,5 +800,7 @@ for my $Count ( 1 .. 2 ) {
         "Key:$Count - KeySearch()",
     );
 }
+
+# cleanup is done by RestoreDatabase.
 
 1;

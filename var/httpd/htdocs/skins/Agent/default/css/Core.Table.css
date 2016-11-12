@@ -74,6 +74,10 @@ table tr.MasterAction {
     border-collapse: separate;
 }
 
+.DataTable.FixedLayout {
+    table-layout: fixed;
+}
+
 .DataTable.VariableWidth {
     width: auto;
 }
@@ -157,6 +161,12 @@ table tr.MasterAction {
 .DataTable tbody td {
     padding: 0 10px;
     border-right: 1px dotted #CCC;
+}
+
+.DataTable.FixedLayout tbody td a.AsBlock {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 .DataTable tbody td.UnreadArticles {
@@ -753,6 +763,11 @@ thead .headerSortDown > a:before {
     top: 2px;
     width: 180px;
     z-index: 100;
+}
+
+.MainBox.Dashboard .DataTable thead th.DashboardHeader .ColumnSettingsBox,
+.MainBox.Dashboard .TableSmall thead th.OverviewHeader .ColumnSettingsBox {
+    top: -10px;
 }
 
 .DataTable thead th.DashboardHeader .ColumnSettingsBox select,

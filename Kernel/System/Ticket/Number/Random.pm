@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -17,7 +17,15 @@ use warnings;
 our @ObjectDependencies = (
     'Kernel::Config',
     'Kernel::System::Log',
+    'Kernel::System::Ticket',
 );
+
+sub new {
+    my ($Type) = @_;
+
+    my $Self = {};
+    bless( $Self, $Type );
+}
 
 sub TicketCreateNumber {
     my $Self = shift;
@@ -37,7 +45,7 @@ sub TicketCreateNumber {
     my $Tn = $SystemID . $Count;
 
     # Check ticket number. If exists generate new one!
-    if ( $Self->TicketCheckNumber( Tn => $Tn ) ) {
+    if ( $Kernel::OM->Get('Kernel::System::Ticket')->TicketCheckNumber( Tn => $Tn ) ) {
 
         $Self->{LoopProtectionCounter}++;
 

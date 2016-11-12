@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -29,20 +29,16 @@ our @ObjectDependencies = (
 
 Kernel::System::SupportBundleGenerator - support bundle generator
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All support bundle generator functions.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=item new()
+Don't use the constructor directly, use the ObjectManager instead:
 
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $SupportBundleGeneratorObject = $Kernel::OM->Get('Kernel::System::SupportBundleGenerator');
 
 =cut
@@ -66,7 +62,7 @@ sub new {
     return $Self;
 }
 
-=item Generate()
+=head2 Generate()
 
 Generates a support bundle tar or tar.gz with the following contents: Registration Information,
 Support Data, Installed Packages, and another tar or tar.gz with all changed or new files in the
@@ -272,7 +268,7 @@ sub Generate {
     };
 }
 
-=item GenerateCustomFilesArchive()
+=head2 GenerateCustomFilesArchive()
 
 Generates a .tar or tar.gz file with all eligible changed or added files taking the ARCHIVE file as
 a reference
@@ -409,7 +405,7 @@ sub GenerateCustomFilesArchive {
     return ( \$TmpTar, 'application.tar' );
 }
 
-=item GeneratePackageList()
+=head2 GeneratePackageList()
 
 Generates a .csv file with all installed packages
 
@@ -450,7 +446,7 @@ sub GeneratePackageList {
     return ( \$CSVContent, 'InstalledPackages.csv' );
 }
 
-=item GenerateRegistrationInfo()
+=head2 GenerateRegistrationInfo()
 
 Generates a .json file with the otrs system registration information
 
@@ -499,7 +495,7 @@ sub GenerateRegistrationInfo {
     return ( \$JSONContent, 'RegistrationInfo.json' );
 }
 
-=item GenerateSupportData()
+=head2 GenerateSupportData()
 
 Generates a .json file with the support data
 
@@ -656,8 +652,6 @@ sub _GetCustomFileList {
 
     return @Files;
 }
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

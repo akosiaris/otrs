@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -281,7 +281,7 @@ sub Run {
         next DYNAMICFIELDID if !$DynamicFieldID;
         next DYNAMICFIELDID if !$DynamicFieldList->{$DynamicFieldID};
         my $Key = 'X-OTRS-FollowUp-DynamicField-' . $DynamicFieldList->{$DynamicFieldID};
-        if ( $GetParam{$Key} ) {
+        if ( defined $GetParam{$Key} && length $GetParam{$Key} ) {
 
             # get dynamic field config
             my $DynamicFieldGet = $DynamicFieldObject->DynamicFieldGet(
@@ -313,8 +313,12 @@ sub Run {
     for my $Item ( sort keys %Values ) {
         for my $Count ( 1 .. 16 ) {
             my $Key = $Item . $Count;
-            if ( $GetParam{$Key} && $DynamicFieldListReversed{ $Values{$Item} . $Count } ) {
-
+            if (
+                defined $GetParam{$Key}
+                && length $GetParam{$Key}
+                && $DynamicFieldListReversed{ $Values{$Item} . $Count }
+                )
+            {
                 # get dynamic field config
                 my $DynamicFieldGet = $DynamicFieldObject->DynamicFieldGet(
                     ID => $DynamicFieldListReversed{ $Values{$Item} . $Count },
@@ -340,7 +344,7 @@ sub Run {
 
         my $Key = 'X-OTRS-FollowUp-TicketTime' . $Count;
 
-        if ( $GetParam{$Key} ) {
+        if ( defined $GetParam{$Key} && length $GetParam{$Key} ) {
 
             # get time object
             my $TimeObject = $Kernel::OM->Get('Kernel::System::Time');
@@ -440,7 +444,7 @@ sub Run {
         next DYNAMICFIELDID if !$DynamicFieldID;
         next DYNAMICFIELDID if !$DynamicFieldList->{$DynamicFieldID};
         my $Key = 'X-OTRS-FollowUp-DynamicField-' . $DynamicFieldList->{$DynamicFieldID};
-        if ( $GetParam{$Key} ) {
+        if ( defined $GetParam{$Key} && length $GetParam{$Key} ) {
 
             # get dynamic field config
             my $DynamicFieldGet = $DynamicFieldObject->DynamicFieldGet(
@@ -472,8 +476,12 @@ sub Run {
     for my $Item ( sort keys %Values ) {
         for my $Count ( 1 .. 16 ) {
             my $Key = $Item . $Count;
-            if ( $GetParam{$Key} && $DynamicFieldListReversed{ $Values{$Item} . $Count } ) {
-
+            if (
+                defined $GetParam{$Key}
+                && length $GetParam{$Key}
+                && $DynamicFieldListReversed{ $Values{$Item} . $Count }
+                )
+            {
                 # get dynamic field config
                 my $DynamicFieldGet = $DynamicFieldObject->DynamicFieldGet(
                     ID => $DynamicFieldListReversed{ $Values{$Item} . $Count },
@@ -491,6 +499,19 @@ sub Run {
                     print "TicketKey$Count: " . $GetParam{$Key} . "\n";
                 }
             }
+        }
+    }
+
+    # set ticket title
+    if ( $GetParam{'X-OTRS-FollowUp-Title'} ) {
+        $TicketObject->TicketTitleUpdate(
+            Title    => $GetParam{'X-OTRS-FollowUp-Title'},
+            TicketID => $Param{TicketID},
+            UserID   => $Param{InmailUserID},
+        );
+
+        if ( $Self->{Debug} > 0 ) {
+            print "Title: $GetParam{'X-OTRS-FollowUp-Title'}\n";
         }
     }
 

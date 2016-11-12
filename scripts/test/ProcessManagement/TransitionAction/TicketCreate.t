@@ -1,11 +1,12 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
 # did not receive this file, see http://www.gnu.org/licenses/agpl.txt.
 # --
 
+## no critic (Modules::RequireExplicitPackage)
 use strict;
 use warnings;
 use utf8;
@@ -15,24 +16,26 @@ use vars (qw($Self));
 use Kernel::System::VariableCheck qw(:all);
 
 # get needed objects
-my $HelperObject            = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
-my $DynamicFieldObject      = $Kernel::OM->Get('Kernel::System::DynamicField');
-my $DynamicFieldValueObject = $Kernel::OM->Get('Kernel::System::DynamicFieldValue');
-my $TicketObject            = $Kernel::OM->Get('Kernel::System::Ticket');
-my $LinkObject              = $Kernel::OM->Get('Kernel::System::LinkObject');
-my $StateObject             = $Kernel::OM->Get('Kernel::System::State');
-my $TimeObject              = $Kernel::OM->Get('Kernel::System::Time');
-my $UserObject              = $Kernel::OM->Get('Kernel::System::User');
-my $ModuleObject            = $Kernel::OM->Get('Kernel::System::ProcessManagement::TransitionAction::TicketCreate');
+my $DynamicFieldObject = $Kernel::OM->Get('Kernel::System::DynamicField');
+my $TicketObject       = $Kernel::OM->Get('Kernel::System::Ticket');
+my $LinkObject         = $Kernel::OM->Get('Kernel::System::LinkObject');
+
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
 # define variables
 my $UserID     = 1;
 my $ModuleName = 'TicketCreate';
-my $RandomID   = $HelperObject->GetRandomID();
+my $RandomID   = $Helper->GetRandomID();
 
 # set user details
-my $TestUserLogin = $HelperObject->TestUserCreate();
-my $TestUserID    = $UserObject->UserLookup(
+my $TestUserLogin = $Helper->TestUserCreate();
+my $TestUserID    = $Kernel::OM->Get('Kernel::System::User')->UserLookup(
     UserLogin => $TestUserLogin,
 );
 
@@ -47,24 +50,18 @@ $Self->True(
     "Set Email Test backend with true",
 );
 
-# ----------------------------------------
+#
 # Create a test ticket
-# ----------------------------------------
+#
 my $TicketID = $TicketObject->TicketCreate(
-    TN            => undef,
     Title         => 'test',
     QueueID       => 1,
     Lock          => 'unlock',
     Priority      => '3 normal',
     StateID       => 1,
     TypeID        => 1,
-    Service       => undef,
-    SLA           => undef,
-    CustomerID    => undef,
-    CustomerUser  => undef,
     OwnerID       => 1,
     ResponsibleID => 1,
-    ArchiveFlag   => undef,
     UserID        => $UserID,
 );
 
@@ -85,7 +82,9 @@ $Self->True(
 
 my @AddedTickets = ($TicketID);
 
-# ----------------------------------------
+my $UserLogin = $Kernel::OM->Get('Kernel::System::User')->UserLookup(
+    UserID => 1,
+);
 
 # create dynamic fields
 my $DynamicFieldID1 = $DynamicFieldObject->DynamicFieldAdd(
@@ -118,9 +117,33 @@ my $DynamicFieldID2 = $DynamicFieldObject->DynamicFieldAdd(
     ValidID => 1,
     UserID  => 1,
 );
+my $DynamicFieldID3 = $DynamicFieldObject->DynamicFieldAdd(
+    InternalField => 0,
+    Name          => 'Field3' . $RandomID,
+    Label         => 'a description',
+    FieldOrder    => 10000,
+    FieldType     => 'Multiselect',
+    ObjectType    => 'Ticket',
+    Config        => {
+        Name            => 'AnyName',
+        Description     => 'Description for Dynamic Field.',
+        DefaultValue    => '',
+        MultiselectSort => 'TreeView',
+        PossibleNone    => 0,
+        PossibleValues  => {
+            1 => 'A',
+            2 => 'B',
+            3 => 'C',
+        },
+        TranslatableValues => 0,
+    },
+    Reorder => 1,
+    ValidID => 1,
+    UserID  => 1,
+);
 
 # sanity checks
-for my $DynamicFieldID ( $DynamicFieldID1, $DynamicFieldID2 ) {
+for my $DynamicFieldID ( $DynamicFieldID1, $DynamicFieldID2, $DynamicFieldID3 ) {
     $Self->True(
         $DynamicFieldID,
         "DynamicFieldADD() - $DynamicFieldID",
@@ -136,9 +159,41 @@ for my $DynamicFieldID ( $DynamicFieldID1, $DynamicFieldID2 ) {
     );
 }
 
-# ----------------------------------------
+#
+my $DynamicFieldBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
 
-my @PendingStateIDs = $StateObject->StateGetStatesByType(
+# set a value for multiselect dynamic field
+my $DFSetSuccess = $DynamicFieldBackendObject->ValueSet(
+    DynamicFieldConfig => {
+        ID         => $DynamicFieldID3,
+        FieldType  => 'Multiselect',
+        ObjectType => 'Ticket',
+        Config     => {
+            PossibleValues => {
+                1 => 'A',
+                2 => 'B',
+                3 => 'C',
+            },
+            }
+    },
+    ObjectID => $TicketID,
+    Value    => [ 1, 2 ],
+    UserID   => 1,
+);
+
+$Self->True(
+    $DFSetSuccess,
+    "DynamicField ValueSet() for DynamicFieldID $DynamicFieldID3 - with true",
+);
+
+# get ticket again now with dynamic fields
+%Ticket = $TicketObject->TicketGet(
+    TicketID      => $TicketID,
+    UserID        => $UserID,
+    DynamicFields => 1,
+);
+
+my @PendingStateIDs = $Kernel::OM->Get('Kernel::System::State')->StateGetStatesByType(
     StateType => ['pending reminder'],
     Result    => 'ID',
 );
@@ -296,6 +351,53 @@ my @Tests = (
                 CustomerID    => '123465',
                 CustomerUser  => 'customer@example.com',
                 OwnerID       => 1,
+                TypeID        => 1,
+                ResponsibleID => 1,
+                PendingTime   => '2014-12-23 23:05:00',
+
+                ArticleType    => 'note-internal',
+                SenderType     => 'agent',
+                ContentType    => 'text/plain; charset=ISO-8859-15',
+                Subject        => 'some short description',
+                Body           => 'the message text',
+                HistoryType    => 'OwnerUpdate',
+                HistoryComment => 'Some free text!',
+                From           => 'Some Agent <email@example.com>',
+                To             => 'Some Customer A <customer-a@example.com>',
+                Cc             => 'Some Customer B <customer-b@example.com>',
+                ReplyTo        => 'Some Customer B <customer-b@example.com>',
+                MessageID      => '<asdasdasd.123@example.com>',
+                InReplyTo      => '<asdasdasd.12@example.com>',
+                References =>
+                    '<asdasdasd.1@example.com> <asdasdasd.12@example.com>',
+                NoAgentNotify             => 0,
+                ForceNotificationToUserID => [ 1, 43, 56, ],
+                ExcludeNotificationToUserID     => [ 43, 56, ],
+                ExcludeMuteNotificationToUserID => [ 43, 56, ],
+
+                "DynamicField_Field1$RandomID" => 'Ticket',
+                "DynamicField_Field2$RandomID" => 'Article',
+                LinkAs                         => 'Parent',
+                TimeUnit                       => 123,
+            },
+        },
+        Success           => 1,
+        UpdatePendingTime => 0,
+    },
+    {
+        Name   => 'Correct ASCII (Witn Owner, not OwnerID)',
+        Config => {
+            UserID => $UserID,
+            Ticket => \%Ticket,
+            Config => {
+                Title         => 'ProcessManagement::TransitionAction::TicketCreate::1::' . $RandomID,
+                QueueID       => 1,
+                Lock          => 'unlock',
+                Priority      => '3 normal',
+                StateID       => 1,
+                CustomerID    => '123465',
+                CustomerUser  => 'customer@example.com',
+                Owner         => $UserLogin,
                 TypeID        => 1,
                 ResponsibleID => 1,
                 PendingTime   => '2014-12-23 23:05:00',
@@ -509,6 +611,48 @@ my @Tests = (
         Success => 1,
     },
     {
+        Name   => 'Correct Ticket->Owner',
+        Config => {
+            UserID => $UserID,
+            Ticket => \%Ticket,
+            Config => {
+                Title         => 'ProcessManagement::TransitionAction::TicketCreate::5::' . $RandomID,
+                CustomerID    => '123465',
+                CustomerUser  => 'customer@example.com',
+                Owner         => '<OTRS_TICKET_Owner>',
+                TypeID        => 1,
+                ResponsibleID => 1,
+                PendingTime   => '2014-12-23 23:05:00',
+
+                ArticleType    => 'note-internal',
+                SenderType     => 'agent',
+                ContentType    => 'text/plain; charset=ISO-8859-15',
+                Subject        => 'some short description',
+                Body           => 'the message text',
+                HistoryType    => 'OwnerUpdate',
+                HistoryComment => 'Some free text!',
+                From           => 'Some Agent <email@example.com>',
+                To             => 'Some Customer A <customer-a@example.com>',
+                Cc             => 'Some Customer B <customer-b@example.com>',
+                ReplyTo        => 'Some Customer B <customer-b@example.com>',
+                MessageID      => '<asdasdasd.123@example.com>',
+                InReplyTo      => '<asdasdasd.12@example.com>',
+                References =>
+                    '<asdasdasd.1@example.com> <asdasdasd.12@example.com>',
+                NoAgentNotify             => 0,
+                ForceNotificationToUserID => [ 1, 43, 56, ],
+                ExcludeNotificationToUserID     => [ 43, 56, ],
+                ExcludeMuteNotificationToUserID => [ 43, 56, ],
+
+                "DynamicField_Field1$RandomID" => 'Ticket',
+                "DynamicField_Field2$RandomID" => 'Article',
+                LinkAs                         => 'Child',
+                TimeUnit                       => 123,
+            },
+        },
+        Success => 1,
+    },
+    {
         Name   => 'Correct Ticket->OwnerID No Article',
         Config => {
             UserID => $UserID,
@@ -530,6 +674,72 @@ my @Tests = (
         Success => 1,
         Article => 0,
     },
+    {
+        Name   => 'Correct Ticket->Owner No Article',
+        Config => {
+            UserID => $UserID,
+            Ticket => \%Ticket,
+            Config => {
+                Title         => 'ProcessManagement::TransitionAction::TicketCreate::5::' . $RandomID,
+                CustomerID    => '123465',
+                CustomerUser  => 'customer@example.com',
+                Owner         => '<OTRS_TICKET_Owner>',
+                TypeID        => 1,
+                ResponsibleID => 1,
+                PendingTime   => '2014-12-23 23:05:00',
+
+                "DynamicField_Field1$RandomID" => 'Ticket',
+                "DynamicField_Field2$RandomID" => 'Article',
+                LinkAs                         => 'Child',
+            },
+        },
+        Success => 1,
+        Article => 0,
+    },
+
+    {
+        Name   => 'Correct Ticket->DynamicField_Field3 No Article',
+        Config => {
+            UserID => $UserID,
+            Ticket => \%Ticket,
+            Config => {
+                Title         => 'ProcessManagement::TransitionAction::TicketCreate::5::' . $RandomID,
+                CustomerID    => '123465',
+                CustomerUser  => 'customer@example.com',
+                OwnerID       => '1',
+                TypeID        => 1,
+                ResponsibleID => 1,
+                PendingTime   => '2014-12-23 23:05:00',
+
+                "DynamicField_Field1$RandomID" => 'Ticket',
+                "DynamicField_Field2$RandomID" => 'Article',
+                "DynamicField_Field3$RandomID" => "<OTRS_TICKET_DynamicField_Field3$RandomID>",
+            },
+        },
+        Success => 1,
+        Article => 0,
+    },
+    {
+        Name   => 'Correct Ticket->DynamicField_Field3_Value No Article',
+        Config => {
+            UserID => $UserID,
+            Ticket => \%Ticket,
+            Config => {
+                Title         => 'ProcessManagement::TransitionAction::TicketCreate::5::' . $RandomID,
+                CustomerID    => '123465',
+                CustomerUser  => 'customer@example.com',
+                OwnerID       => '1',
+                TypeID        => 1,
+                ResponsibleID => 1,
+                PendingTime   => '2014-12-23 23:05:00',
+
+                "DynamicField_Field1$RandomID" => "<OTRS_TICKET_DynamicField_Field3$RandomID" . '_Value>',
+            },
+        },
+        Success => 1,
+        Article => 0,
+    },
+
     {
         Name   => 'Correct Ticket->NotExistent',
         Config => {
@@ -632,7 +842,7 @@ for my $Test (@Tests) {
     # make a deep copy to avoid changing the definition
     my $OrigTest = Storable::dclone($Test);
 
-    my $Success = $ModuleObject->Run(
+    my $Success = $Kernel::OM->Get('Kernel::System::ProcessManagement::TransitionAction::TicketCreate')->Run(
         %{ $Test->{Config} },
         ProcessEntityID          => 'P1',
         ActivityEntityID         => 'A1',
@@ -646,7 +856,7 @@ for my $Test (@Tests) {
 
         $Self->True(
             $Success,
-            "$ModuleName Run() - Test:'$Test->{Name}' | excecuted with True"
+            "$ModuleName Run() - Test:'$Test->{Name}' | executed with True"
         );
 
         # search for new created ticket
@@ -709,17 +919,65 @@ for my $Test (@Tests) {
                 )
             {
                 $ExpectedValue = $Ticket{$1} // '';
-                $Self->IsNot(
-                    $Test->{Config}->{Config}->{$Attribute},
-                    $OrigTest->{Config}->{Config}->{$Attribute},
-                    "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute value: $OrigTest->{Config}->{Config}->{$Attribute} should been replaced",
-                );
+                if ( !ref $ExpectedValue && $OrigTest->{Config}->{Config}->{$Attribute} !~ m{_Value} ) {
+                    $Self->IsNot(
+                        $Test->{Config}->{Config}->{$Attribute},
+                        $OrigTest->{Config}->{Config}->{$Attribute},
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute value: $OrigTest->{Config}->{Config}->{$Attribute} should been replaced",
+                    );
+                    $Self->Is(
+                        $Test->{Config}->{Config}->{$Attribute},
+                        $Ticket{$Attribute},
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute value:",
+                    );
+
+                }
+                elsif ( $OrigTest->{Config}->{Config}->{$Attribute} =~ m{OTRS_TICKET_DynamicField_(\S+?)_Value} ) {
+                    $Self->IsNot(
+                        $Test->{Config}->{Config}->{$Attribute},
+                        $OrigTest->{Config}->{Config}->{$Attribute},
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute value: $OrigTest->{Config}->{Config}->{$Attribute} should been replaced",
+                    );
+                    my $DynamicFieldName = $1;
+
+                    my $DynamicFieldConfig = $DynamicFieldObject->DynamicFieldGet(
+                        Name => $DynamicFieldName,
+                    );
+
+                    my $DisplayValue = $DynamicFieldBackendObject->ValueLookup(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        Key                => $Ticket{"DynamicField_$DynamicFieldName"},
+                    );
+
+                    my $DisplayValueStrg = $DynamicFieldBackendObject->ReadableValueRender(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        Value              => $DisplayValue,
+                    );
+
+                    $Self->Is(
+                        $Test->{Config}->{Config}->{$Attribute},
+                        $DisplayValueStrg->{Value},
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute value:",
+                    );
+                }
+                else {
+                    $Self->IsNotDeeply(
+                        $Test->{Config}->{Config}->{$Attribute},
+                        $OrigTest->{Config}->{Config}->{$Attribute},
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute value: $OrigTest->{Config}->{Config}->{$Attribute} should been replaced",
+                    );
+                    $Self->IsDeeply(
+                        $Test->{Config}->{Config}->{$Attribute},
+                        $Ticket{$Attribute},
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute value:",
+                    );
+                }
             }
             elsif ( $Attribute eq 'PendingTime' && !$OrigTest->{UpdatePendingTime} ) {
                 $ExpectedValue = 0;
             }
             elsif ( $Attribute eq 'PendingTime' && $OrigTest->{UpdatePendingTime} ) {
-                $ExpectedValue = $TimeObject->TimeStamp2SystemTime(
+                $ExpectedValue = $Kernel::OM->Get('Kernel::System::Time')->TimeStamp2SystemTime(
                     String => $ExpectedValue,
                 );
             }
@@ -731,12 +989,47 @@ for my $Test (@Tests) {
             # }
 
             if ( $Test->{Article} ) {
-                $Self->Is(
-                    $Article{$ArticleAttribute},
-                    $ExpectedValue,
-                    "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute for ArticleID:"
-                        . " $Article{ArticleID} match expected value",
-                );
+                if ( !ref $ExpectedValue && $OrigTest->{Config}->{Config}->{$Attribute} !~ m{_Value} ) {
+                    $Self->Is(
+                        $Article{$ArticleAttribute},
+                        $ExpectedValue,
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute for ArticleID:"
+                            . " $Article{ArticleID} match expected value",
+                    );
+                }
+                elsif ( $OrigTest->{Config}->{Config}->{$Attribute} =~ m{OTRS_TICKET_DynamicField_(\S+?)_Value} ) {
+
+                    my $DynamicFieldName = $1;
+
+                    my $DynamicFieldConfig = $DynamicFieldObject->DynamicFieldGet(
+                        Name => $DynamicFieldName,
+                    );
+
+                    my $DisplayValue = $DynamicFieldBackendObject->ValueLookup(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        Key                => $Ticket{"DynamicField_$DynamicFieldName"},
+                    );
+
+                    my $DisplayValueStrg = $DynamicFieldBackendObject->ReadableValueRender(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        Value              => $DisplayValue,
+                    );
+
+                    $Self->Is(
+                        $Article{$ArticleAttribute},
+                        $DisplayValueStrg->{Value},
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute for ArticleID:"
+                            . " $Article{ArticleID} match expected value",
+                    );
+                }
+                else {
+                    $Self->IsDeeply(
+                        $Article{$ArticleAttribute},
+                        $ExpectedValue,
+                        "$ModuleName - Test:'$Test->{Name}' | Attribute: $Attribute for ArticleID:"
+                            . " $Article{ArticleID} match expected value",
+                    );
+                }
             }
         }
 
@@ -750,7 +1043,7 @@ for my $Test (@Tests) {
         }
         if ( $Test->{Config}->{Config}->{LinkAs} ) {
 
-            # crearte a LinkLookup for easy check
+            # create a LinkLookup for easy check
             my %LinkLookup;
 
             my %TypeList = $LinkObject->TypeList(
@@ -812,57 +1105,6 @@ for my $Test (@Tests) {
     }
 }
 
-#-----------------------------------------
-# Destructors to remove our Testitems
-# ----------------------------------------
-
-for my $DynamicFieldID ( $DynamicFieldID1, $DynamicFieldID2 ) {
-    my $Success = $DynamicFieldValueObject->AllValuesDelete(
-        FieldID => $DynamicFieldID,
-        UserID  => 1,
-    );
-    $Self->True(
-        $Success,
-        "AllValuesDelete() - $DynamicFieldID",
-    );
-    $Success = $DynamicFieldObject->DynamicFieldDelete(
-        ID      => $DynamicFieldID,
-        UserID  => 1,
-        Reorder => 0,
-    );
-    $Self->True(
-        $Success,
-        "DynamicFieldDelete() - $DynamicFieldID",
-    );
-}
-
-# Ticket
-for my $TicketID (@AddedTickets) {
-    my $Delete = $TicketObject->TicketDelete(
-        TicketID => $TicketID,
-        UserID   => 1,
-    );
-    $Self->True(
-        $Delete,
-        "TicketDelete() - $TicketID",
-    );
-}
-
-# test email backed
-my $TestEmailObject = $Kernel::OM->Get('Kernel::System::Email::Test');
-
-$Success = $TestEmailObject->CleanUp();
-$Self->True(
-    $Success,
-    'Test email backend final cleanup',
-);
-
-$Self->IsDeeply(
-    $TestEmailObject->EmailsGet(),
-    [],
-    'Test email backend empty after final cleanup',
-);
-
-# ----------------------------------------
+# cleanup is done by RestoreDatabase
 
 1;

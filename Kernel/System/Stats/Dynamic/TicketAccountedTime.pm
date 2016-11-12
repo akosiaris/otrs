@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -16,6 +16,7 @@ use Kernel::Language qw(Translatable);
 
 our @ObjectDependencies = (
     'Kernel::Config',
+    'Kernel::Language',
     'Kernel::System::DB',
     'Kernel::System::DynamicField',
     'Kernel::System::DynamicField::Backend',
@@ -211,11 +212,19 @@ sub GetObjectAttributes {
             Block            => 'InputField',
         },
         {
-            Name             => Translatable('CustomerUserLogin'),
+            Name             => Translatable('CustomerUserLogin (complex search)'),
             UseAsXvalue      => 0,
             UseAsValueSeries => 0,
             UseAsRestriction => 1,
             Element          => 'CustomerUserLogin',
+            Block            => 'InputField',
+        },
+        {
+            Name             => Translatable('CustomerUserLogin (exact match)'),
+            UseAsXvalue      => 0,
+            UseAsValueSeries => 0,
+            UseAsRestriction => 1,
+            Element          => 'CustomerUserLoginRaw',
             Block            => 'InputField',
         },
         {
@@ -381,7 +390,8 @@ sub GetObjectAttributes {
 
         # get service list
         my %Service = $Kernel::OM->Get('Kernel::System::Service')->ServiceList(
-            UserID => 1,
+            KeepChildren => $ConfigObject->Get('Ticket::Service::KeepChildren'),
+            UserID       => 1,
         );
 
         # get sla list
@@ -448,9 +458,9 @@ sub GetObjectAttributes {
             Block            => 'SelectField',
             Translation      => 1,
             Values           => {
-                ArchivedTickets    => 'Archived tickets',
-                NotArchivedTickets => 'Unarchived tickets',
-                AllTickets         => 'All tickets',
+                ArchivedTickets    => Translatable('Archived tickets'),
+                NotArchivedTickets => Translatable('Unarchived tickets'),
+                AllTickets         => Translatable('All tickets'),
             },
         );
 
@@ -537,16 +547,26 @@ sub GetObjectAttributes {
     }
     else {
 
-        my %ObjectAttribute = (
-            Name             => Translatable('CustomerID'),
-            UseAsXvalue      => 0,
-            UseAsValueSeries => 0,
-            UseAsRestriction => 1,
-            Element          => 'CustomerID',
-            Block            => 'InputField',
+        my @CustomerIDAttributes = (
+            {
+                Name             => Translatable('CustomerID (complex search)'),
+                UseAsXvalue      => 0,
+                UseAsValueSeries => 0,
+                UseAsRestriction => 1,
+                Element          => 'CustomerID',
+                Block            => 'InputField',
+            },
+            {
+                Name             => Translatable('CustomerID (exact match)'),
+                UseAsXvalue      => 0,
+                UseAsValueSeries => 0,
+                UseAsRestriction => 1,
+                Element          => 'CustomerIDRaw',
+                Block            => 'InputField',
+            },
         );
 
-        push @ObjectAttributes, \%ObjectAttribute;
+        push @ObjectAttributes, @CustomerIDAttributes;
     }
 
     # get dynamic field backend object
@@ -776,14 +796,17 @@ sub GetHeaderLine {
 
         my %Selected = map { $_ => 1 } @{ $Param{XValue}{SelectedValues} };
 
+        # get language object
+        my $LanguageObject = $Kernel::OM->Get('Kernel::Language');
+
         my $Attributes = $Self->_KindsOfReporting();
-        my @HeaderLine = ('Evaluation by');
+        my @HeaderLine = ( $LanguageObject->Translate('Evaluation by') );
         my $SortedRef  = $Self->_SortedKindsOfReporting();
 
         ATTRIBUTE:
         for my $Attribute ( @{$SortedRef} ) {
             next ATTRIBUTE if !$Selected{$Attribute};
-            push @HeaderLine, $Attributes->{$Attribute};
+            push @HeaderLine, $LanguageObject->Translate( $Attributes->{$Attribute} );
         }
         return \@HeaderLine;
 
@@ -1288,15 +1311,15 @@ sub _KindsOfReporting {
     my $Self = shift;
 
     my %KindsOfReporting = (
-        TotalTime        => 'Total Time',
-        TicketAverage    => 'Ticket Average',
-        TicketMinTime    => 'Ticket Min Time',
-        TicketMaxTime    => 'Ticket Max Time',
-        NumberOfTickets  => 'Number of Tickets',
-        ArticleAverage   => 'Article Average',
-        ArticleMinTime   => 'Article Min Time',
-        ArticleMaxTime   => 'Article Max Time',
-        NumberOfArticles => 'Number of Articles',
+        TotalTime        => Translatable('Total Time'),
+        TicketAverage    => Translatable('Ticket Average'),
+        TicketMinTime    => Translatable('Ticket Min Time'),
+        TicketMaxTime    => Translatable('Ticket Max Time'),
+        NumberOfTickets  => Translatable('Number of Tickets'),
+        ArticleAverage   => Translatable('Article Average'),
+        ArticleMinTime   => Translatable('Article Min Time'),
+        ArticleMaxTime   => Translatable('Article Max Time'),
+        NumberOfArticles => Translatable('Number of Articles'),
     );
     return \%KindsOfReporting;
 }
@@ -1344,7 +1367,9 @@ sub _AllowedTicketSearchAttributes {
         ResponsibleIDs
         WatchUserIDs
         CustomerID
+        CustomerIDRaw
         CustomerUserLogin
+        CustomerUserLoginRaw
         CreatedUserIDs
         CreatedTypes
         CreatedTypeIDs

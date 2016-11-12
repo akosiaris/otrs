@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -16,7 +16,6 @@ use Kernel::System::VariableCheck qw(:all);
 
 # get needed objects
 my $DBObject        = $Kernel::OM->Get('Kernel::System::DB');
-my $HelperObject    = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 my $DFBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
 
 my $UserID = 1;
@@ -210,6 +209,7 @@ my @Tests = (
             DynamicFieldConfig => $DynamicFieldConfigs{Text},
             TableAlias         => 'dfv',
             TestOperators      => {
+                Empty             => 1,
                 Equals            => 'Foo',
                 GreaterThan       => 'Foo',
                 GreaterThanEquals => 'Foo',
@@ -219,6 +219,7 @@ my @Tests = (
             },
         },
         ExpectedResult => {
+            Empty             => " dfv.value_text IS NULL ",
             Equals            => " dfv.value_text = 'Foo' ",
             GreaterThan       => " dfv.value_text > 'Foo' ",
             GreaterThanEquals => " dfv.value_text >= 'Foo' ",
@@ -235,6 +236,7 @@ my @Tests = (
             DynamicFieldConfig => $DynamicFieldConfigs{TextArea},
             TableAlias         => 'dfv',
             TestOperators      => {
+                Empty             => 1,
                 Equals            => 'Foo',
                 GreaterThan       => 'Foo',
                 GreaterThanEquals => 'Foo',
@@ -244,6 +246,7 @@ my @Tests = (
             },
         },
         ExpectedResult => {
+            Empty             => " dfv.value_text IS NULL ",
             Equals            => " dfv.value_text = 'Foo' ",
             GreaterThan       => " dfv.value_text > 'Foo' ",
             GreaterThanEquals => " dfv.value_text >= 'Foo' ",
@@ -252,6 +255,19 @@ my @Tests = (
             },
             SmallerThan       => " dfv.value_text < 'Foo' ",
             SmallerThanEquals => " dfv.value_text <= 'Foo' ",
+        },
+    },
+    {
+        Name   => 'TextArea Not Empty',
+        Config => {
+            DynamicFieldConfig => $DynamicFieldConfigs{TextArea},
+            TableAlias         => 'dfv',
+            TestOperators      => {
+                Empty => 0,
+            },
+        },
+        ExpectedResult => {
+            Empty => " dfv.value_text <> '' ",
         },
     },
     {
@@ -283,6 +299,7 @@ my @Tests = (
             DynamicFieldConfig => $DynamicFieldConfigs{Checkbox},
             TableAlias         => 'dfv',
             TestOperators      => {
+                Empty             => 1,
                 Equals            => 123,
                 GreaterThan       => 123,
                 GreaterThanEquals => 123,
@@ -292,6 +309,7 @@ my @Tests = (
             },
         },
         ExpectedResult => {
+            Empty             => " dfv.value_int IS NULL ",
             Equals            => " dfv.value_int = 123 ",
             GreaterThan       => undef,
             GreaterThanEquals => undef,
@@ -301,11 +319,25 @@ my @Tests = (
         },
     },
     {
+        Name   => 'Checkbox Not Empty',
+        Config => {
+            DynamicFieldConfig => $DynamicFieldConfigs{Checkbox},
+            TableAlias         => 'dfv',
+            TestOperators      => {
+                Empty => 0,
+            },
+        },
+        ExpectedResult => {
+            Empty => " dfv.value_int IS NOT NULL ",
+        },
+    },
+    {
         Name   => 'Dropdown',
         Config => {
             DynamicFieldConfig => $DynamicFieldConfigs{Dropdown},
             TableAlias         => 'dfv',
             TestOperators      => {
+                Empty             => 1,
                 Equals            => 'Foo',
                 GreaterThan       => 'Foo',
                 GreaterThanEquals => 'Foo',
@@ -315,6 +347,7 @@ my @Tests = (
             },
         },
         ExpectedResult => {
+            Empty             => " dfv.value_text IS NULL OR dfv.value_text = '' ",
             Equals            => " dfv.value_text = 'Foo' ",
             GreaterThan       => " dfv.value_text > 'Foo' ",
             GreaterThanEquals => " dfv.value_text >= 'Foo' ",
@@ -323,6 +356,19 @@ my @Tests = (
             },
             SmallerThan       => " dfv.value_text < 'Foo' ",
             SmallerThanEquals => " dfv.value_text <= 'Foo' ",
+        },
+    },
+    {
+        Name   => 'Dropdown Not Empty',
+        Config => {
+            DynamicFieldConfig => $DynamicFieldConfigs{Dropdown},
+            TableAlias         => 'dfv',
+            TestOperators      => {
+                Empty => 0,
+            },
+        },
+        ExpectedResult => {
+            Empty => " dfv.value_text <> '' ",
         },
     },
     {
@@ -331,6 +377,7 @@ my @Tests = (
             DynamicFieldConfig => $DynamicFieldConfigs{Multiselect},
             TableAlias         => 'dfv',
             TestOperators      => {
+                Empty             => 1,
                 Equals            => 'Foo',
                 GreaterThan       => 'Foo',
                 GreaterThanEquals => 'Foo',
@@ -340,6 +387,7 @@ my @Tests = (
             },
         },
         ExpectedResult => {
+            Empty             => " dfv.value_text IS NULL OR dfv.value_text = '' ",
             Equals            => " dfv.value_text = 'Foo' ",
             GreaterThan       => " dfv.value_text > 'Foo' ",
             GreaterThanEquals => " dfv.value_text >= 'Foo' ",
@@ -351,11 +399,25 @@ my @Tests = (
         },
     },
     {
+        Name   => 'Multiselect Not Empty',
+        Config => {
+            DynamicFieldConfig => $DynamicFieldConfigs{Multiselect},
+            TableAlias         => 'dfv',
+            TestOperators      => {
+                Empty => 0,
+            },
+        },
+        ExpectedResult => {
+            Empty => " dfv.value_text <> '' ",
+        },
+    },
+    {
         Name   => 'DateTime',
         Config => {
             DynamicFieldConfig => $DynamicFieldConfigs{DateTime},
             TableAlias         => 'dfv',
             TestOperators      => {
+                Empty             => 1,
                 Equals            => 'Foo',
                 GreaterThan       => 'Foo',
                 GreaterThanEquals => 'Foo',
@@ -365,6 +427,45 @@ my @Tests = (
             },
         },
         ExpectedResult => {
+            Empty             => " dfv.value_date IS NULL ",
+            Equals            => " dfv.value_date = 'Foo' ",
+            GreaterThan       => " dfv.value_date > 'Foo' ",
+            GreaterThanEquals => " dfv.value_date >= 'Foo' ",
+            Like              => undef,
+            SmallerThan       => " dfv.value_date < 'Foo' ",
+            SmallerThanEquals => " dfv.value_date <= 'Foo' ",
+        },
+    },
+    {
+        Name   => 'DateTime Not Empty',
+        Config => {
+            DynamicFieldConfig => $DynamicFieldConfigs{DateTime},
+            TableAlias         => 'dfv',
+            TestOperators      => {
+                Empty => 0,
+            },
+        },
+        ExpectedResult => {
+            Empty => " dfv.value_date IS NOT NULL ",
+        },
+    },
+    {
+        Name   => 'Date',
+        Config => {
+            DynamicFieldConfig => $DynamicFieldConfigs{Date},
+            TableAlias         => 'dfv',
+            TestOperators      => {
+                Empty             => 1,
+                Equals            => 'Foo',
+                GreaterThan       => 'Foo',
+                GreaterThanEquals => 'Foo',
+                Like              => 'Foo*',
+                SmallerThan       => 'Foo',
+                SmallerThanEquals => 'Foo',
+            },
+        },
+        ExpectedResult => {
+            Empty             => " dfv.value_date IS NULL ",
             Equals            => " dfv.value_date = 'Foo' ",
             GreaterThan       => " dfv.value_date > 'Foo' ",
             GreaterThanEquals => " dfv.value_date >= 'Foo' ",
@@ -379,22 +480,12 @@ my @Tests = (
             DynamicFieldConfig => $DynamicFieldConfigs{Date},
             TableAlias         => 'dfv',
             TestOperators      => {
-                Equals            => 'Foo',
-                GreaterThan       => 'Foo',
-                GreaterThanEquals => 'Foo',
-                Like              => 'Foo*',
-                SmallerThan       => 'Foo',
-                SmallerThanEquals => 'Foo',
+                Empty => 0,
             },
         },
         ExpectedResult => {
-            Equals            => " dfv.value_date = 'Foo' ",
-            GreaterThan       => " dfv.value_date > 'Foo' ",
-            GreaterThanEquals => " dfv.value_date >= 'Foo' ",
-            Like              => undef,
-            SmallerThan       => " dfv.value_date < 'Foo' ",
-            SmallerThanEquals => " dfv.value_date <= 'Foo' ",
-        },
+            Empty => " dfv.value_date IS NOT NULL ",
+            }
     },
 );
 
@@ -436,7 +527,7 @@ for my $Test (@Tests) {
             }
             else {
 
-                # like Operator is very complex and deppends on the DB
+                # like Operator is very complex and depends on the DB
                 my $SQL = $DBObject->QueryCondition(
                     Key   => $Test->{ExpectedResult}->{$Operator}->{ColumnKey},
                     Value => $Config{SearchTerm},
@@ -452,4 +543,5 @@ for my $Test (@Tests) {
 }
 
 # we don't need any cleanup
+
 1;

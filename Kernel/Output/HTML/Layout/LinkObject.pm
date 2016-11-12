@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,8 @@ use strict;
 use warnings;
 
 use Kernel::System::LinkObject;
+use Kernel::Language qw(Translatable);
+use Kernel::System::VariableCheck qw(:all);
 
 our $ObjectManagerDisabled = 1;
 
@@ -19,15 +21,13 @@ our $ObjectManagerDisabled = 1;
 
 Kernel::Output::HTML::Layout::LinkObject - all LinkObject-related HTML functions
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All LinkObject-related HTML functions
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=item LinkObjectTableCreate()
+=head2 LinkObjectTableCreate()
 
 create a output table
 
@@ -64,11 +64,14 @@ sub LinkObjectTableCreate {
         return $Self->LinkObjectTableCreateComplex(
             LinkListWithData => $Param{LinkListWithData},
             ViewMode         => $Param{ViewMode},
+            AJAX             => $Param{AJAX},
+            SourceObject     => $Param{Object},
+            ObjectID         => $Param{Key},
         );
     }
 }
 
-=item LinkObjectTableCreateComplex()
+=head2 LinkObjectTableCreateComplex()
 
 create a complex output table
 
@@ -100,7 +103,7 @@ sub LinkObjectTableCreateComplex {
     if ( ref $Param{LinkListWithData} ne 'HASH' ) {
         $LogObject->Log(
             Priority => 'error',
-            Message  => 'LinkListWithData must be a hash referance!',
+            Message  => 'LinkListWithData must be a hash reference!',
         );
         return;
     }
@@ -143,6 +146,8 @@ sub LinkObjectTableCreateComplex {
         # get block data
         my @BlockData = $BackendObject->TableCreateComplex(
             ObjectLinkListWithData => $Param{LinkListWithData}->{$Object},
+            Action                 => $Self->{Action},
+            ObjectID               => $Param{ObjectID},
         );
 
         next OBJECT if !@BlockData;
@@ -155,20 +160,20 @@ sub LinkObjectTableCreateComplex {
 
         ITEM:
         for my $Item ( @{ $Block->{ItemList} } ) {
+            if ( !grep { $_->{Key} } @{$Item} ) {
+                $Item->[0] = {
+                    Type => 'Text',
+                    Content =>
+                        'ERROR: Key attribute not found in any column of the item list.',
+                };
+            }
 
-            next ITEM if $Item->[0]->{Key} && $Block->{Object};
+            next ITEM if $Block->{Object};
 
             if ( !$Block->{Object} ) {
                 $Item->[0] = {
                     Type    => 'Text',
                     Content => 'ERROR: Object attribute not found in the block data.',
-                };
-            }
-            else {
-                $Item->[0] = {
-                    Type => 'Text',
-                    Content =>
-                        'ERROR: Key attribute not found in the first column of the item list.',
                 };
             }
         }
@@ -179,7 +184,7 @@ sub LinkObjectTableCreateComplex {
 
         # define the headline column
         my $Column = {
-            Content => 'Linked as',
+            Content => $Kernel::OM->Get('Kernel::Language')->Translate('Linked as'),
         };
 
         # add new column to the headline
@@ -187,15 +192,18 @@ sub LinkObjectTableCreateComplex {
 
         for my $Item ( @{ $Block->{ItemList} } ) {
 
-            # define checkbox cell
+            # search for key
+            my ($ItemWithKey) = grep { $_->{Key} } @{$Item};
+
+            # define check-box cell
             my $CheckboxCell = {
                 Type         => 'LinkTypeList',
                 Content      => '',
-                LinkTypeList => $LinkList{ $Block->{Object} }->{ $Item->[0]->{Key} },
+                LinkTypeList => $LinkList{ $Block->{Object} }->{ $ItemWithKey->{Key} },
                 Translate    => 1,
             };
 
-            # add checkbox cell to item
+            # add check-box cell to item
             push @{$Item}, $CheckboxCell;
         }
     }
@@ -216,14 +224,17 @@ sub LinkObjectTableCreateComplex {
 
             for my $Item ( @{ $Block->{ItemList} } ) {
 
-                # define checkbox cell
+                # search for key
+                my ($ItemWithKey) = grep { $_->{Key} } @{$Item};
+
+                # define check-box cell
                 my $CheckboxCell = {
                     Type    => 'Checkbox',
                     Name    => 'LinkTargetKeys',
-                    Content => $Item->[0]->{Key},
+                    Content => $ItemWithKey->{Key},
                 };
 
-                # add checkbox cell to item
+                # add check-box cell to item
                 unshift @{$Item}, $CheckboxCell;
             }
         }
@@ -243,17 +254,20 @@ sub LinkObjectTableCreateComplex {
 
             for my $Item ( @{ $Block->{ItemList} } ) {
 
-                # define checkbox delete cell
+                # search for key
+                my ($ItemWithKey) = grep { $_->{Key} } @{$Item};
+
+                # define check-box delete cell
                 my $CheckboxCell = {
                     Type         => 'CheckboxDelete',
                     Object       => $Block->{Object},
                     Content      => '',
-                    Key          => $Item->[0]->{Key},
-                    LinkTypeList => $LinkList{ $Block->{Object} }->{ $Item->[0]->{Key} },
+                    Key          => $ItemWithKey->{Key},
+                    LinkTypeList => $LinkList{ $Block->{Object} }->{ $ItemWithKey->{Key} },
                     Translate    => 1,
                 };
 
-                # add checkbox cell to item
+                # add check-box cell to item
                 unshift @{$Item}, $CheckboxCell;
             }
         }
@@ -269,9 +283,32 @@ sub LinkObjectTableCreateComplex {
     );
 
     # set block description
-    my $BlockDescription = $Param{ViewMode} eq 'ComplexAdd' ? 'Search Result' : 'Linked';
+    my $BlockDescription = $Param{ViewMode} eq 'ComplexAdd' ? Translatable('Search Result') : Translatable('Linked');
 
     my $BlockCounter = 0;
+
+    my $Config = $Kernel::OM->Get('Kernel::Config')->Get("LinkObject::ComplexTable") || {};
+    my $SettingsVisibility = $Kernel::OM->Get('Kernel::Config')->Get("LinkObject::ComplexTable::SettingsVisibility")
+        || {};
+
+    my @SettingsVisible = ();
+
+    if ( IsHashRefWithData($SettingsVisibility) ) {
+        for my $Key ( sort keys %{$SettingsVisibility} ) {
+
+            for my $Item ( @{ $SettingsVisibility->{$Key} } ) {
+
+                # check if it's not in array
+                if ( !grep { $Item eq $_ } @SettingsVisible ) {
+                    push @SettingsVisible, $Item;
+                }
+            }
+        }
+    }
+
+    # get OriginalAction
+    my $OriginalAction = $Kernel::OM->Get('Kernel::System::Web::Request')->GetParam( Param => 'OriginalAction' )
+        || $Self->{Action};
 
     BLOCK:
     for my $Block (@OutputData) {
@@ -286,8 +323,62 @@ sub LinkObjectTableCreateComplex {
             Data => {
                 BlockDescription => $BlockDescription,
                 Blockname        => $Block->{Blockname} || '',
+                Name             => $Block->{Blockname},
+                NameForm         => $Block->{Blockname},
+                AJAX             => $Param{AJAX},
             },
         );
+
+        # check if registered in SysConfig
+        if (
+            IsHashRefWithData($Config)
+            && $Config->{ $Block->{Blockname} }
+            && grep { $OriginalAction eq $_ } @SettingsVisible
+            )
+        {
+            my $SourceObjectData = '';
+            if ( $Block->{ObjectName} && $Block->{ObjectID} ) {
+                $SourceObjectData = "<input type='hidden' name='$Block->{ObjectName}' value='$Block->{ObjectID}' />";
+            }
+
+            # send data to JS
+            $LayoutObject->AddJSData(
+                Key   => 'LinkObjectName',
+                Value => $Block->{Blockname},
+            );
+
+            $LayoutObject->Block(
+                Name => 'ContentLargePreferences',
+                Data => {
+                    Name => $Block->{Blockname},
+                },
+            );
+
+            my %Preferences = $Self->ComplexTablePreferencesGet(
+                Config  => $Config->{ $Block->{Blockname} },
+                PrefKey => "LinkObject::ComplexTable-" . $Block->{Blockname},
+            );
+
+            # send data to JS
+            $LayoutObject->AddJSData(
+                Key   => 'LinkObjectPreferences',
+                Value => \%Preferences,
+            );
+
+            $LayoutObject->Block(
+                Name => $Preferences{Name} . 'PreferencesItem' . $Preferences{Block},
+                Data => {
+                    %Preferences,
+                    NameForm          => $Block->{Blockname},
+                    NamePref          => $Preferences{Name},
+                    Name              => $Block->{Blockname},
+                    SourceObject      => $Param{SourceObject},
+                    DestinationObject => $Block->{Blockname},
+                    OriginalAction    => $OriginalAction,
+                    SourceObjectData  => $SourceObjectData,
+                },
+            );
+        }
 
         # output table headline
         for my $HeadlineColumn ( @{ $Block->{Headline} } ) {
@@ -337,7 +428,7 @@ sub LinkObjectTableCreateComplex {
             $LayoutObject->Block(
                 Name => 'TableComplexBlockActionRowBulk',
                 Data => {
-                    Name        => 'Bulk',
+                    Name        => Translatable('Bulk'),
                     TableNumber => $BlockCounter,
                 },
             );
@@ -361,7 +452,7 @@ sub LinkObjectTableCreateComplex {
             $LayoutObject->Block(
                 Name => 'TableComplexBlockActionRowBulk',
                 Data => {
-                    Name        => 'Bulk',
+                    Name        => Translatable('Bulk'),
                     TableNumber => $BlockCounter,
                 },
             );
@@ -379,16 +470,17 @@ sub LinkObjectTableCreateComplex {
             );
         }
 
-        # increase BlockCounter to set correct IDs for Select All Checkboxes
+        # increase BlockCounter to set correct IDs for Select All Check-boxes
         $BlockCounter++;
     }
 
     return $LayoutObject->Output(
         TemplateFile => 'LinkObject',
+        AJAX         => $Param{AJAX},
     );
 }
 
-=item LinkObjectTableCreateSimple()
+=head2 LinkObjectTableCreateSimple()
 
 create a simple output table
 
@@ -510,7 +602,7 @@ sub LinkObjectTableCreateSimple {
     );
 }
 
-=item LinkObjectSelectableObjectList()
+=head2 LinkObjectSelectableObjectList()
 
 return a selection list of linkable objects
 
@@ -615,7 +707,7 @@ sub LinkObjectSelectableObjectList {
     return $TargetObjectStrg;
 }
 
-=item LinkObjectSearchOptionList()
+=head2 LinkObjectSearchOptionList()
 
 return a list of search options
 
@@ -653,9 +745,227 @@ sub LinkObjectSearchOptionList {
     return @SearchOptionList;
 }
 
+=head2 ComplexTablePreferencesGet()
+
+get items needed for AllocationList initialization.
+
+    my %Preferences = $LayoutObject->ComplexTablePreferencesGet(
+        Config  => {
+            'DefaultColumns' => {
+                'Age' => 1,
+                'EscalationTime' => 1,
+                ...
+            },
+            Priority => {
+                'Age' => 120,
+                'TicketNumber' => 100,
+                ...
+            }
+        }.
+        PrefKey => "LinkObject::ComplexTable-Ticket",
+    );
+
+returns:
+    %Preferences =  {
+        'ColumnsAvailable' => '["Age","Changed","CustomerID","CustomerName","CustomerUserID",...]',
+        'Block' => 'AllocationList',
+        'Translation' => 1,
+        'Name' => 'ContentLarge',
+        'Columns' => '{"Columns":{"SLA":0,"Type":0,"Owner":0,"Service":0,"CustomerUserID":0,...}}',
+        'Desc' => 'Shown Columns',
+        'ColumnsEnabled' => '["State","TicketNumber","Title","Created","Queue"]',
+    };
+
+=cut
+
+sub ComplexTablePreferencesGet {
+    my ( $Self, %Param ) = @_;
+
+    # configure columns
+    my @ColumnsEnabled;
+    my @ColumnsAvailable;
+    my @ColumnsAvailableNotEnabled;
+
+    # check for default settings
+    if (
+        $Param{Config}->{DefaultColumns}
+        && IsHashRefWithData( $Param{Config}->{DefaultColumns} )
+        )
+    {
+        @ColumnsAvailable = grep { $Param{Config}->{DefaultColumns}->{$_} }
+            keys %{ $Param{Config}->{DefaultColumns} };
+        @ColumnsEnabled = grep { $Param{Config}->{DefaultColumns}->{$_} eq '2' }
+            keys %{ $Param{Config}->{DefaultColumns} };
+
+        if (
+            $Param{Config}->{Priority}
+            && IsHashRefWithData( $Param{Config}->{Priority} )
+            )
+        {
+            # sort according to priority defined in SysConfig
+            @ColumnsEnabled
+                = sort { $Param{Config}->{Priority}->{$a} <=> $Param{Config}->{Priority}->{$b} } @ColumnsEnabled;
+        }
+    }
+
+    # check if the user has filter preferences for this widget
+    my %Preferences = $Kernel::OM->Get('Kernel::System::User')->GetPreferences(
+        UserID => $Self->{UserID},
+    );
+
+    # get JSON object
+    my $JSONObject = $Kernel::OM->Get('Kernel::System::JSON');
+
+    # if preference settings are available, take them
+    if ( $Preferences{ $Param{PrefKey} } ) {
+
+        my $ColumnsEnabled = $JSONObject->Decode(
+            Data => $Preferences{ $Param{PrefKey} },
+        );
+
+        @ColumnsEnabled = grep { $ColumnsEnabled->{Columns}->{$_} == 1 }
+            keys %{ $ColumnsEnabled->{Columns} };
+
+        if ( $ColumnsEnabled->{Order} && @{ $ColumnsEnabled->{Order} } ) {
+            @ColumnsEnabled = @{ $ColumnsEnabled->{Order} };
+        }
+
+        # remove duplicate columns
+        my %UniqueColumns;
+        my @ColumnsEnabledAux;
+
+        for my $Column (@ColumnsEnabled) {
+            if ( !$UniqueColumns{$Column} ) {
+                push @ColumnsEnabledAux, $Column;
+            }
+            $UniqueColumns{$Column} = 1;
+        }
+
+        # set filtered column list
+        @ColumnsEnabled = @ColumnsEnabledAux;
+    }
+
+    my %Columns;
+    for my $ColumnName ( sort { $a cmp $b } @ColumnsAvailable ) {
+        $Columns{Columns}->{$ColumnName} = ( grep { $ColumnName eq $_ } @ColumnsEnabled ) ? 1 : 0;
+        if ( !grep { $_ eq $ColumnName } @ColumnsEnabled ) {
+            push @ColumnsAvailableNotEnabled, $ColumnName;
+        }
+    }
+    $Columns{Order} = \@ColumnsEnabled;
+
+    my %Params = (
+        Desc             => Translatable('Shown Columns'),
+        Name             => "ContentLarge",
+        Block            => 'AllocationList',
+        Columns          => $JSONObject->Encode( Data => \%Columns ),
+        ColumnsEnabled   => $JSONObject->Encode( Data => \@ColumnsEnabled ),
+        ColumnsAvailable => $JSONObject->Encode( Data => \@ColumnsAvailableNotEnabled ),
+        Translation      => 1,
+    );
+
+    return %Params;
+}
+
+=head2 ComplexTablePreferencesSet()
+
+set user preferences.
+
+    my $Success = $LayoutObject->ComplexTablePreferencesSet(
+        DestinationObject => 'Ticket',
+    );
+
+=cut
+
+sub ComplexTablePreferencesSet {
+    my ( $Self, %Param ) = @_;
+
+    # check needed stuff
+    for my $Needed (qw( DestinationObject)) {
+        if ( !$Param{$Needed} ) {
+            $Kernel::OM->Get('Kernel::System::Log')->Log(
+                Priority => 'error',
+                Message  => "Need $Needed!"
+            );
+            return;
+        }
+    }
+
+    # needed objects
+    my $ParamObject  = $Kernel::OM->Get('Kernel::System::Web::Request');
+    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+    my $JSONObject   = $Kernel::OM->Get('Kernel::System::JSON');
+
+    my $Result = 'Unknown';
+    my $Config = $ConfigObject->Get("LinkObject::ComplexTable") || {};
+
+    # get default preferences
+    my %Preferences = $Self->ComplexTablePreferencesGet(
+        Config  => $Config->{ $Param{DestinationObject} },
+        PrefKey => "LinkObject::ComplexTable-" . $Param{DestinationObject},
+    );
+
+    if ( !%Preferences ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "No preferences for $Param{DestinationObject}!"
+        );
+        return;
+    }
+
+    # get params
+    my $Value = $ParamObject->GetParam( Param => $Preferences{Name} );
+
+    # decode JSON value
+    my $Preference = $JSONObject->Decode(
+        Data => $Value,
+    );
+
+    # remove Columns (not needed)
+    delete $Preference->{Columns};
+
+    if ( $Param{DestinationObject} eq 'Ticket' ) {
+
+        # Make sure that ticket number is always present, otherwise there will be problems.
+        if ( !grep { $_ eq 'TicketNumber' } @{ $Preference->{Order} } ) {
+            unshift @{ $Preference->{Order} }, 'TicketNumber';
+        }
+    }
+
+    if ( IsHashRefWithData($Preference) ) {
+
+        $Value = $JSONObject->Encode(
+            Data => $Preference,
+        );
+
+        # update runtime vars
+        $Self->{ $Preferences{Name} } = $Value;
+
+        # update session
+        $Kernel::OM->Get('Kernel::System::AuthSession')->UpdateSessionID(
+            SessionID => $Self->{SessionID},
+            Key       => $Preferences{Name},
+            Value     => $Value,
+        );
+
+        # update preferences
+        if ( !$ConfigObject->Get('DemoSystem') ) {
+            $Kernel::OM->Get('Kernel::System::User')->SetPreferences(
+                UserID => $Self->{UserID},
+                Key    => "LinkObject::ComplexTable-" . $Param{DestinationObject},
+                Value  => $Value,
+            );
+
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 =begin Internal:
 
-=item _LinkObjectContentStringCreate()
+=head2 _LinkObjectContentStringCreate()
 
 return a output string
 
@@ -824,7 +1134,7 @@ sub _LinkObjectContentStringCreate {
     );
 }
 
-=item _LoadLinkObjectLayoutBackend()
+=head2 _LoadLinkObjectLayoutBackend()
 
 load a linkobject layout backend module
 
@@ -889,8 +1199,6 @@ sub _LoadLinkObjectLayoutBackend {
 =cut
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

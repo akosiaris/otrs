@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -13,154 +13,130 @@ use utf8;
 use vars (qw($Self));
 
 # get selenium object
-$Kernel::OM->ObjectParamAdd(
-    'Kernel::System::UnitTest::Selenium' => {
-        Verbose => 1,
-        }
-);
 my $Selenium = $Kernel::OM->Get('Kernel::System::UnitTest::Selenium');
 
 $Selenium->RunTest(
     sub {
 
         # get helper object
-        $Kernel::OM->ObjectParamAdd(
-            'Kernel::System::UnitTest::Helper' => {
-                RestoreSystemConfiguration => 1,
-                }
-        );
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        # check if MIME-Viewer exists in file system
-        my $Exist = -e '/usr/bin/pdftohtml';
-        if ( !$Exist ) {
-            $Self->False(
-                $Exist,
-                "Can't find MIME-Viewer for PDF, please install pdftohtml"
+        # enable MIME-Viewer for PDF attachment
+        $Helper->ConfigSettingChange(
+            Valid => 1,
+            Key   => 'MIME-Viewer###application/pdf',
+            Value => "echo 'OTRS.org TEST'",
+        );
+
+        # create test user and login
+        my $TestUserLogin = $Helper->TestUserCreate(
+            Groups => [ 'admin', 'users' ],
+        ) || die "Did not get test user";
+
+        $Selenium->Login(
+            Type     => 'Agent',
+            User     => $TestUserLogin,
+            Password => $TestUserLogin,
+        );
+
+        # get test user ID
+        my $TestUserID = $Kernel::OM->Get('Kernel::System::User')->UserLookup(
+            UserLogin => $TestUserLogin,
+        );
+
+        # get ticket object
+        my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+
+        # create test ticket
+        my $TicketID = $TicketObject->TicketCreate(
+            Title        => 'Some Ticket Title',
+            Queue        => 'Raw',
+            Lock         => 'unlock',
+            Priority     => '3 normal',
+            State        => 'new',
+            CustomerID   => '123465',
+            CustomerUser => 'customer@example.com',
+            OwnerID      => $TestUserID,
+            UserID       => $TestUserID,
+        );
+
+        # add article to test ticket with PDF test attachment
+        my $Location = $Kernel::OM->Get('Kernel::Config')->Get('Home')
+            . "/scripts/test/sample/StdAttachment/StdAttachment-Test1.pdf";
+
+        my $ContentRef = $Kernel::OM->Get('Kernel::System::Main')->FileRead(
+            Location => $Location,
+            Mode     => 'binmode',
+        );
+        my $Content = ${$ContentRef};
+
+        my $ArticleID = $TicketObject->ArticleCreate(
+            TicketID       => $TicketID,
+            ArticleType    => 'note-internal',
+            SenderType     => 'agent',
+            Subject        => 'some short description',
+            Body           => 'the message text',
+            ContentType    => 'text/html; charset=ISO-8859-15',
+            HistoryType    => 'AddNote',
+            HistoryComment => 'Some free text!',
+            UserID         => $TestUserID,
+            Attachment     => [
+                {
+                    Content     => $Content,
+                    ContentType => 'application/pdf',
+                    Filename    => 'StdAttachment-Test1.pdf',
+                },
+            ],
+        );
+
+        # go to ticket zoom page of created test ticket
+        my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AgentTicketZoom;TicketID=$TicketID");
+
+        # check are there Download and Viewer links for test attachment
+        $Self->True(
+            $Selenium->find_element("//a[contains(\@title, \'Download' )]"),
+            "Download link for attachment is founded"
+        );
+        $Self->True(
+            $Selenium->find_element("//a[contains(\@title, \'Viewer' )]"),
+            "Viewer link for attachment is founded"
+        );
+
+        # check test attachment in MIME-Viwer, WaitFor will be done after switch to window
+        $Selenium->find_element("//a[contains(\@title, \'Viewer' )]")->VerifiedClick();
+
+        # switch to link object window
+        $Selenium->WaitFor( WindowCount => 2 );
+
+        my $Handles = $Selenium->get_window_handles();
+        $Selenium->switch_to_window( $Handles->[1] );
+
+        # check expected values in PDF test attachment
+        for my $ExpextedValue (qw(OTRS.org TEST)) {
+            $Self->True(
+                index( $Selenium->get_page_source(), $ExpextedValue ) > -1,
+                "Value is founded on screen - $ExpextedValue"
             );
         }
-        else {
+        $Selenium->close();
 
-            # get sysconfig object
-            my $SysConfigObject = $Kernel::OM->Get('Kernel::System::SysConfig');
+        #$Selenium->switch_to_window( $Handles->[0] );
 
-            # enable MIME-Viewer for PDF attachment
-            $SysConfigObject->ConfigItemUpdate(
-                Valid => 1,
-                Key   => 'MIME-Viewer###application/pdf',
-                Value => "pdftohtml -stdout -i",
-            );
+        # delete created test ticket
+        my $Success = $TicketObject->TicketDelete(
+            TicketID => $TicketID,
+            UserID   => 1,
+        );
+        $Self->True(
+            $Success,
+            "Ticket with ticket id $TicketID is deleted"
+        );
 
-            # create test user and login
-            my $TestUserLogin = $Helper->TestUserCreate(
-                Groups => [ 'admin', 'users' ],
-            ) || die "Did not get test user";
-
-            $Selenium->Login(
-                Type     => 'Agent',
-                User     => $TestUserLogin,
-                Password => $TestUserLogin,
-            );
-
-            # get test user ID
-            my $TestUserID = $Kernel::OM->Get('Kernel::System::User')->UserLookup(
-                UserLogin => $TestUserLogin,
-            );
-
-            # get ticket object
-            my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
-
-            # create test ticket
-            my $TicketID = $TicketObject->TicketCreate(
-                Title        => 'Some Ticket Title',
-                Queue        => 'Raw',
-                Lock         => 'unlock',
-                Priority     => '3 normal',
-                State        => 'new',
-                CustomerID   => '123465',
-                CustomerUser => 'customer@example.com',
-                OwnerID      => $TestUserID,
-                UserID       => $TestUserID,
-            );
-
-            # add article to test ticket with PDF test attachment
-            my $Location = $Kernel::OM->Get('Kernel::Config')->Get('Home')
-                . "/scripts/test/sample/StdAttachment/StdAttachment-Test1.pdf";
-
-            my $ContentRef = $Kernel::OM->Get('Kernel::System::Main')->FileRead(
-                Location => $Location,
-                Mode     => 'binmode',
-            );
-            my $Content = ${$ContentRef};
-
-            my $ArticleID = $TicketObject->ArticleCreate(
-                TicketID       => $TicketID,
-                ArticleType    => 'note-internal',
-                SenderType     => 'agent',
-                Subject        => 'some short description',
-                Body           => 'the message text',
-                ContentType    => 'text/html; charset=ISO-8859-15',
-                HistoryType    => 'AddNote',
-                HistoryComment => 'Some free text!',
-                UserID         => $TestUserID,
-                Attachment     => [
-                    {
-                        Content     => $Content,
-                        ContentType => 'application/pdf',
-                        Filename    => 'StdAttachment-Test1.pdf',
-                    },
-                ],
-            );
-
-            # go to ticket zoom page of created test ticket
-            my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
-            $Selenium->get("${ScriptAlias}index.pl?Action=AgentTicketZoom;TicketID=$TicketID");
-
-            # wait until form has loaded, if neccessary
-            $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
-
-            # check are there Downlaod and Viewer liks for test attachment
-            $Self->True(
-                $Selenium->find_element("//a[contains(\@title, \'Download' )]"),
-                "Download link for attachment is founded"
-            );
-            $Self->True(
-                $Selenium->find_element("//a[contains(\@title, \'Viewer' )]"),
-                "Viewer link for attachment is founded"
-            );
-
-            # check test attachment in MIME-Viwer
-            $Selenium->find_element("//a[contains(\@title, \'Viewer' )]")->click();
-
-            my $Handles = $Selenium->get_window_handles();
-            $Selenium->switch_to_window( $Handles->[1] );
-
-            sleep 3;
-
-            # check expexted values in PDF test attachment
-            for my $ExpextedValue (qw(OTRS.org TEST)) {
-                $Self->True(
-                    index( $Selenium->get_page_source(), $ExpextedValue ) > -1,
-                    "Value is founded on screen - $ExpextedValue"
-                );
-            }
-            $Selenium->close();
-
-            # delete created test ticket
-            my $Success = $TicketObject->TicketDelete(
-                TicketID => $TicketID,
-                UserID   => 1,
-            );
-            $Self->True(
-                $Success,
-                "Ticket with ticket id $TicketID is deleted"
-            );
-
-            # make sure the cache is correct.
-            $Kernel::OM->Get('Kernel::System::Cache')->CleanUp(
-                Type => 'Ticket'
-            );
-        }
+        # make sure the cache is correct.
+        $Kernel::OM->Get('Kernel::System::Cache')->CleanUp(
+            Type => 'Ticket'
+        );
     }
 );
 

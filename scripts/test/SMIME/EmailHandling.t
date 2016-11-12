@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,6 +11,7 @@ use warnings;
 use utf8;
 
 use vars (qw($Self));
+use File::Path qw(mkpath rmtree);
 
 use Kernel::Output::HTML::ArticleCheck::SMIME;
 
@@ -20,9 +21,31 @@ my $MainObject      = $Kernel::OM->Get('Kernel::System::Main');
 my $TicketObject    = $Kernel::OM->Get('Kernel::System::Ticket');
 my $HTMLUtilsObject = $Kernel::OM->Get('Kernel::System::HTMLUtils');
 
-my $HomeDir     = $ConfigObject->Get('Home');
-my $CertPath    = $ConfigObject->Get('SMIME::CertPath');
-my $PrivatePath = $ConfigObject->Get('SMIME::PrivatePath');
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+
+my $HomeDir = $ConfigObject->Get('Home');
+
+# create directory for certificates and private keys
+my $CertPath    = $ConfigObject->Get('Home') . "/var/tmp/certs";
+my $PrivatePath = $ConfigObject->Get('Home') . "/var/tmp/private";
+mkpath( [$CertPath],    0, 0770 );    ## no critic
+mkpath( [$PrivatePath], 0, 0770 );    ## no critic
+
+# set SMIME paths
+$ConfigObject->Set(
+    Key   => 'SMIME::CertPath',
+    Value => $CertPath,
+);
+$ConfigObject->Set(
+    Key   => 'SMIME::PrivatePath',
+    Value => $PrivatePath,
+);
 
 my $OpenSSLBin = $ConfigObject->Get('SMIME::Bin');
 
@@ -203,7 +226,7 @@ for my $Certificate (@Certificates) {
         "#$Certificate->{CertificateName} CertificateAdd() - $Result{Message}",
     );
 
-    # and private key
+    # add private key
     my $KeyString = $MainObject->FileRead(
         Directory => $ConfigObject->Get('Home') . "/scripts/test/sample/SMIME/",
         Filename  => $Certificate->{PrivateKeyFileName},
@@ -340,7 +363,7 @@ my @TestVariations;
 for my $Test (@Tests) {
     push @TestVariations, {
         %{$Test},
-        Name        => $Test->{Name} . " sign only",
+        Name        => $Test->{Name} . " (old API) sign only",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From => 'unittest@example.org',
@@ -357,7 +380,7 @@ for my $Test (@Tests) {
 
     push @TestVariations, {
         %{$Test},
-        Name        => $Test->{Name} . " crypt only",
+        Name        => $Test->{Name} . " (old API) crypt only",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From  => 'unittest@example.org',
@@ -373,7 +396,7 @@ for my $Test (@Tests) {
 
     push @TestVariations, {
         %{$Test},
-        Name        => $Test->{Name} . " sign and crypt",
+        Name        => $Test->{Name} . " (old API) sign and crypt",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From => 'unittest@example.org',
@@ -394,7 +417,7 @@ for my $Test (@Tests) {
 
     push @TestVariations, {
         %{$Test},
-        Name        => $Test->{Name} . " chain CA cert sign only",
+        Name        => $Test->{Name} . " (old API) chain CA cert sign only",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From => 'smimeuser1@test.com',
@@ -411,7 +434,7 @@ for my $Test (@Tests) {
 
     push @TestVariations, {
         %{$Test},
-        Name        => $Test->{Name} . " chain CA cert crypt only",
+        Name        => $Test->{Name} . " (old API) chain CA cert crypt only",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From  => 'smimeuser1@test.com',
@@ -427,7 +450,7 @@ for my $Test (@Tests) {
 
     push @TestVariations, {
         %{$Test},
-        Name        => $Test->{Name} . " chain CA cert sign and crypt",
+        Name        => $Test->{Name} . " (old API) chain CA cert sign and crypt",
         ArticleData => {
             %{ $Test->{ArticleData} },
             From => 'smimeuser1@test.com',
@@ -445,11 +468,134 @@ for my $Test (@Tests) {
         VerifySignature  => 1,
         VerifyDecryption => 1,
     };
+
+    # here starts the tests for new API
+
+    push @TestVariations, {
+        %{$Test},
+        Name        => $Test->{Name} . " sign only",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest@example.org',
+            To            => 'unittest@example.org',
+            EmailSecurity => {
+                Backend => 'SMIME',
+                Method  => 'Detached',
+                SignKey => $Check1Hash . '.0',
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 0,
+    };
+
+    push @TestVariations, {
+        %{$Test},
+        Name        => $Test->{Name} . " crypt only",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest@example.org',
+            To            => 'unittest@example.org',
+            EmailSecurity => {
+                Backend     => 'SMIME',
+                Method      => 'Detached',
+                EncryptKeys => [ $Check1Hash . '.0', $OTRSUserCertHash . '.0' ],
+            },
+        },
+        VerifySignature  => 0,
+        VerifyDecryption => 1,
+    };
+
+    push @TestVariations, {
+        %{$Test},
+        Name        => $Test->{Name} . " crypt only (multiple recipients)",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest@example.org',
+            To            => 'unittest@example.org, smimeuser1@test.com',
+            EmailSecurity => {
+                Backend     => 'SMIME',
+                Method      => 'Detached',
+                EncryptKeys => [ $Check1Hash . '.0' ],
+            },
+        },
+        VerifySignature  => 0,
+        VerifyDecryption => 1,
+    };
+
+    push @TestVariations, {
+        %{$Test},
+        Name        => $Test->{Name} . " sign and crypt",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'unittest@example.org',
+            To            => 'unittest@example.org',
+            EmailSecurity => {
+                Backend     => 'SMIME',
+                SubType     => 'Detached',
+                SignKey     => $Check1Hash . '.0',
+                EncryptKeys => [ $Check1Hash . '.0' ],
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 1,
+    };
+
+    push @TestVariations, {
+        %{$Test},
+        Name        => $Test->{Name} . " chain CA cert sign only",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'smimeuser1@test.com',
+            To            => 'smimeuser1@test.com',
+            EmailSecurity => {
+                Backend => 'SMIME',
+                SubType => 'Detached',
+                SignKey => $OTRSUserCertHash . '.0',
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 0,
+    };
+
+    push @TestVariations, {
+        %{$Test},
+        Name        => $Test->{Name} . " chain CA cert crypt only",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'smimeuser1@test.com',
+            To            => 'smimeuser1@test.com',
+            EmailSecurity => {
+                Backend     => 'SMIME',
+                EncryptKeys => [ $OTRSUserCertHash . '.0' ],
+            },
+        },
+        VerifySignature  => 0,
+        VerifyDecryption => 1,
+    };
+
+    push @TestVariations, {
+        %{$Test},
+        Name        => $Test->{Name} . " chain CA cert sign and crypt",
+        ArticleData => {
+            %{ $Test->{ArticleData} },
+            From          => 'smimeuser1@test.com',
+            To            => 'smimeuser1@test.com',
+            EmailSecurity => {
+                Backend     => 'SMIME',
+                SubType     => 'Detached',
+                SignKey     => $OTRSUserCertHash . '.0',
+                EncryptKeys => [ $OTRSUserCertHash . '.0' ],
+            },
+        },
+        VerifySignature  => 1,
+        VerifyDecryption => 1,
+    };
+
 }
 
 for my $Test (@TestVariations) {
 
-    # make a deep copy as the references gets mofified over the tests
+    # make a deep copy as the references gets modified over the tests
     $Test = Storable::dclone($Test);
 
     my $ArticleID = $TicketObject->ArticleSend(
@@ -572,43 +718,15 @@ for my $Test (@TestVariations) {
     }
 }
 
-#
-# cleanup
-#
-
-# the ticket is no longer needed
-$TicketObject->TicketDelete(
-    TicketID => $TicketID,
-    UserID   => 1,
-);
-
-for my $Certificate (@Certificates) {
-    my @Keys = $SMIMEObject->Search(
-        Search => $Certificate->{CertificateHash},
-    );
+# delete needed test directories
+for my $Directory ( $CertPath, $PrivatePath ) {
+    my $Success = rmtree( [$Directory] );
     $Self->True(
-        $Keys[0] || '',
-        "$Certificate->{CertificateName} Search()",
-    );
-
-    my %Result = $SMIMEObject->PrivateRemove(
-        Hash    => $Keys[0]->{Hash},
-        Modulus => $Keys[0]->{Modulus},
-    );
-    $Self->True(
-        $Result{Successful} || '',
-        "$Certificate->{CertificateName} PrivateRemove() - $Result{Message}",
-    );
-
-    %Result = $SMIMEObject->CertificateRemove(
-        Hash        => $Keys[0]->{Hash},
-        Fingerprint => $Keys[0]->{Fingerprint},
-    );
-
-    $Self->True(
-        $Result{Successful} || '',
-        "$Certificate->{CertificateName} CertificateRemove()",
+        $Success,
+        "Directory deleted - '$Directory'",
     );
 }
+
+# cleanup is done by RestoreDatabase.
 
 1;

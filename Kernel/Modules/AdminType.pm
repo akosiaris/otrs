@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -10,6 +10,8 @@ package Kernel::Modules::AdminType;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -38,7 +40,7 @@ sub Run {
         my %Data = $TypeObject->TypeGet( ID => $ID );
         if ( !%Data ) {
             return $LayoutObject->ErrorScreen(
-                Message => 'Need Type!',
+                Message => Translatable('Need Type!'),
             );
         }
         my $Output = $LayoutObject->Header();
@@ -79,7 +81,7 @@ sub Run {
         my %Data = $TypeObject->TypeGet( ID => $GetParam{ID} );
         if ( !%Data ) {
             return $LayoutObject->ErrorScreen(
-                Message => 'Need Type!',
+                Message => Translatable('Need Type!'),
             );
         }
 
@@ -102,17 +104,19 @@ sub Run {
                 %GetParam,
                 UserID => $Self->{UserID}
             );
+
             if ($Update) {
-                $Self->_Overview();
-                my $Output = $LayoutObject->Header();
-                $Output .= $LayoutObject->NavigationBar();
-                $Output .= $LayoutObject->Notify( Info => 'Type updated!' );
-                $Output .= $LayoutObject->Output(
-                    TemplateFile => 'AdminType',
-                    Data         => \%Param,
-                );
-                $Output .= $LayoutObject->Footer();
-                return $Output;
+
+                # if the user would like to continue editing the type, just redirect to the edit screen
+                if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+                    my $ID = $ParamObject->GetParam( Param => 'ID' ) || '';
+                    return $LayoutObject->Redirect( OP => "Action=$Self->{Action};Subaction=Change;ID=$ID" );
+                }
+                else {
+
+                    # otherwise return to overview
+                    return $LayoutObject->Redirect( OP => "Action=$Self->{Action}" );
+                }
             }
         }
 
@@ -193,7 +197,7 @@ sub Run {
                 $Self->_Overview();
                 my $Output = $LayoutObject->Header();
                 $Output .= $LayoutObject->NavigationBar();
-                $Output .= $LayoutObject->Notify( Info => 'Type added!' );
+                $Output .= $LayoutObject->Notify( Info => Translatable('Type added!') );
                 $Output .= $LayoutObject->Output(
                     TemplateFile => 'AdminType',
                     Data         => \%Param,
@@ -283,14 +287,6 @@ sub _Edit {
         },
     );
 
-    # shows header
-    if ( $Param{Action} eq 'Change' ) {
-        $LayoutObject->Block( Name => 'HeaderEdit' );
-    }
-    else {
-        $LayoutObject->Block( Name => 'HeaderAdd' );
-    }
-
     # show appropriate messages for ServerError
     if ( defined $Param{Errors}->{NameExists} && $Param{Errors}->{NameExists} == 1 ) {
         $LayoutObject->Block( Name => 'ExistNameServerError' );
@@ -313,6 +309,7 @@ sub _Overview {
 
     $LayoutObject->Block( Name => 'ActionList' );
     $LayoutObject->Block( Name => 'ActionAdd' );
+    $LayoutObject->Block( Name => 'Filter' );
 
     $LayoutObject->Block(
         Name => 'OverviewResult',

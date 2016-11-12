@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -18,22 +18,14 @@ my $Selenium = $Kernel::OM->Get('Kernel::System::UnitTest::Selenium');
 $Selenium->RunTest(
     sub {
 
-        # Ok, first we delete all pre-existing sessions.
+        # ok, first we delete all pre-existing sessions
         $Kernel::OM->Get('Kernel::System::Console::Command::Maint::Session::DeleteAll')->Execute();
 
         # get helper object
-        $Kernel::OM->ObjectParamAdd(
-            'Kernel::System::UnitTest::Helper' => {
-                RestoreSystemConfiguration => 1,
-            },
-        );
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        # get SysConfig object
-        my $SysConfigObject = $Kernel::OM->Get('Kernel::System::SysConfig');
-
-        # make sure that UserOnline is enabled
-        my %UserOnlineSysConfig = $SysConfigObject->ConfigItemGet(
+        # get UserOnline config
+        my %UserOnlineSysConfig = $Kernel::OM->Get('Kernel::System::SysConfig')->ConfigItemGet(
             Name    => 'DashboardBackend###0400-UserOnline',
             Default => 1,
         );
@@ -41,8 +33,8 @@ $Selenium->RunTest(
         %UserOnlineSysConfig = map { $_->{Key} => $_->{Content} }
             grep { defined $_->{Key} } @{ $UserOnlineSysConfig{Setting}->[1]->{Hash}->[1]->{Item} };
 
-        # enable EventsTicketCalendar and set it to load as default plugin
-        $SysConfigObject->ConfigItemUpdate(
+        # enable UserOnline and set it to load as default plugin
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'DashboardBackend###0400-UserOnline',
             Value => {
@@ -51,10 +43,9 @@ $Selenium->RunTest(
                 }
         );
 
-        # create and login test customer
+        # create test customer user and login
         my $TestCustomerUserLogin = $Helper->TestCustomerUserCreate(
-            Groups => ['admin'],
-        ) || die "Did not get test user";
+        ) || die "Did not get test customer user";
         $Selenium->Login(
             Type     => 'Customer',
             User     => $TestCustomerUserLogin,
@@ -74,7 +65,7 @@ $Selenium->RunTest(
 
         # clean up dashboard cache and refresh screen
         $Kernel::OM->Get('Kernel::System::Cache')->CleanUp( Type => 'Dashboard' );
-        $Selenium->refresh();
+        $Selenium->VerifiedRefresh();
 
         # test UserOnline plugin for agent
         my $ExpectedAgent = "$TestUserLogin";
@@ -84,7 +75,7 @@ $Selenium->RunTest(
         );
 
         # switch to online customers and test UserOnline plugin for customers
-        $Selenium->find_element("//a[contains(\@id, \'Customer' )]")->click();
+        $Selenium->find_element("//a[contains(\@id, \'Customer' )]")->VerifiedClick();
 
         # Wait for AJAX
         my $ExpectedCustomer = "$TestCustomerUserLogin";

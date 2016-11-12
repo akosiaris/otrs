@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -31,17 +31,13 @@ our $UseSlaveDB = 0;
 
 Kernel::System::DB - global database interface
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All database functions to connect/insert/update/delete/... to a database.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create database object, with database connect..
 Usually you do not use it directly, instead use:
@@ -157,7 +153,7 @@ sub new {
     return $Self;
 }
 
-=item Connect()
+=head2 Connect()
 
 to connect to a database
 
@@ -171,8 +167,20 @@ sub Connect {
     # check database handle
     if ( $Self->{dbh} ) {
 
-        return $Self->{dbh} if $Self->{dbh}->ping();
+        my $PingTimeout = 10;        # Only ping every 10 seconds (see bug#12383).
+        my $CurrentTime = time();    ## no critic
 
+        if ( $CurrentTime - ( $Self->{LastPingTime} // 0 ) < $PingTimeout ) {
+            return $Self->{dbh};
+        }
+
+        # Ping to see if the connection is still alive.
+        if ( $Self->{dbh}->ping() ) {
+            $Self->{LastPingTime} = $CurrentTime;
+            return $Self->{dbh};
+        }
+
+        # Ping failed: cause a reconnect.
         delete $Self->{dbh};
     }
 
@@ -219,7 +227,7 @@ sub Connect {
     return $Self->{dbh};
 }
 
-=item Disconnect()
+=head2 Disconnect()
 
 to disconnect from a database
 
@@ -252,7 +260,7 @@ sub Disconnect {
     return 1;
 }
 
-=item Version()
+=head2 Version()
 
 to get the database version
 
@@ -277,7 +285,7 @@ sub Version {
     return $Version;
 }
 
-=item Quote()
+=head2 Quote()
 
 to quote sql parameters
 
@@ -348,7 +356,7 @@ sub Quote {
     return;
 }
 
-=item Error()
+=head2 Error()
 
 to retrieve database errors
 
@@ -362,7 +370,7 @@ sub Error {
     return $DBI::errstr;
 }
 
-=item Do()
+=head2 Do()
 
 to insert, update or delete values
 
@@ -516,7 +524,7 @@ sub _InitSlaveDB {
     return;
 }
 
-=item Prepare()
+=head2 Prepare()
 
 to prepare a SELECT statement
 
@@ -567,6 +575,13 @@ sub Prepare {
             Message  => 'Need SQL!',
         );
         return;
+    }
+
+    if ( $Param{Bind} && ref $Param{Bind} ne 'ARRAY' ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => 'Bind must be and array reference!',
+        );
     }
 
     $Self->{_PreparedOnSlaveDB} = 0;
@@ -687,7 +702,7 @@ sub Prepare {
     return 1;
 }
 
-=item FetchrowArray()
+=head2 FetchrowArray()
 
 to process the results of a SELECT statement
 
@@ -758,7 +773,46 @@ sub FetchrowArray {
     return @Row;
 }
 
-=item GetColumnNames()
+=head2 ListTables()
+
+list all tables in the OTRS database.
+
+    my @Tables = $DBObject->ListTables();
+
+On databases like Oracle it could happen that too many tables are listed (all belonging
+to the current user), if the user also has permissions for other databases. So this list
+should only be used for verification of the presence of expected OTRS tables.
+
+=cut
+
+sub ListTables {
+    my $Self = shift;
+
+    my $SQL = $Self->GetDatabaseFunction('ListTables');
+
+    if ( !$SQL ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'Error',
+            Message  => "Database driver $Self->{'DB::Type'} does not support ListTables.",
+        );
+        return;
+    }
+
+    my $Success = $Self->Prepare(
+        SQL => $SQL,
+    );
+
+    return if !$Success;
+
+    my @Tables;
+    while ( my @Row = $Self->FetchrowArray() ) {
+        push @Tables, lc $Row[0];
+    }
+
+    return @Tables;
+}
+
+=head2 GetColumnNames()
 
 to retrieve the column names of a database statement
 
@@ -784,7 +838,7 @@ sub GetColumnNames {
     return @Result;
 }
 
-=item SelectAll()
+=head2 SelectAll()
 
 returns all available records of a SELECT statement.
 In essence, this calls Prepare() and FetchrowArray() to get all records.
@@ -819,7 +873,7 @@ sub SelectAll {
     return \@Records;
 }
 
-=item GetDatabaseFunction()
+=head2 GetDatabaseFunction()
 
 to get database functions like
     o Limit
@@ -846,7 +900,7 @@ sub GetDatabaseFunction {
     return $Self->{Backend}->{ 'DB::' . $What };
 }
 
-=item SQLProcessor()
+=head2 SQLProcessor()
 
 generate database-specific sql syntax (e. g. CREATE TABLE ...)
 
@@ -996,7 +1050,7 @@ sub SQLProcessor {
     return @SQL;
 }
 
-=item SQLProcessorPost()
+=head2 SQLProcessorPost()
 
 generate database-specific sql syntax, post data of SQLProcessor(),
 e. g. foreign keys
@@ -1017,67 +1071,7 @@ sub SQLProcessorPost {
     return ();
 }
 
-# GetTableData()
-#
-# !! DONT USE THIS FUNCTION !!
-#
-# Due to compatibility reason this function is still available and it will be removed
-# in upcoming releases.
-
-sub GetTableData {
-    my ( $Self, %Param ) = @_;
-
-    my $Table = $Param{Table};
-    my $What  = $Param{What};
-    my $Where = $Param{Where} || '';
-    my $Valid = $Param{Valid} || '';
-    my $Clamp = $Param{Clamp} || '';
-    my %Data;
-
-    my $SQL = "SELECT $What FROM $Table ";
-    if ($Where) {
-        $SQL .= ' WHERE ' . $Where;
-    }
-
-    if ( !$Where && $Valid ) {
-        my @ValidIDs;
-
-        return if !$Self->Prepare( SQL => 'SELECT id FROM valid WHERE name = \'valid\'' );
-        while ( my @Row = $Self->FetchrowArray() ) {
-            push @ValidIDs, $Row[0];
-        }
-
-        $SQL .= " WHERE valid_id IN ( ${\(join ', ', @ValidIDs)} )";
-    }
-
-    $Self->Prepare( SQL => $SQL );
-
-    while ( my @Row = $Self->FetchrowArray() ) {
-        if ( $Row[3] ) {
-            if ($Clamp) {
-                $Data{ $Row[0] } = "$Row[1] $Row[2] ($Row[3])";
-            }
-            else {
-                $Data{ $Row[0] } = "$Row[1] $Row[2] $Row[3]";
-            }
-        }
-        elsif ( $Row[2] ) {
-            if ($Clamp) {
-                $Data{ $Row[0] } = "$Row[1] ( $Row[2] )";
-            }
-            else {
-                $Data{ $Row[0] } = "$Row[1] $Row[2]";
-            }
-        }
-        else {
-            $Data{ $Row[0] } = $Row[1];
-        }
-    }
-
-    return %Data;
-}
-
-=item QueryCondition()
+=head2 QueryCondition()
 
 generate SQL condition query based on a search expression
 
@@ -1337,12 +1331,14 @@ sub QueryCondition {
             $Word =~ s/%%/%/g;
             $Word =~ s/%%/%/g;
 
-            # perform quoting depending on query type
-            if ( $Word =~ m/%/ ) {
-                $Word = $Self->Quote( $Word, 'Like' );
-            }
-            else {
-                $Word = $Self->Quote($Word);
+            # perform quoting depending on query type (only if not in bind mode)
+            if ( !$BindMode ) {
+                if ( $Word =~ m/%/ ) {
+                    $Word = $Self->Quote( $Word, 'Like' );
+                }
+                else {
+                    $Word = $Self->Quote($Word);
+                }
             }
 
             # if it's a NOT LIKE condition
@@ -1524,6 +1520,12 @@ sub QueryCondition {
             Priority => 'notice',
             Message  => "Invalid condition '$Param{Value}', $Open open and $Close close!",
         );
+        if ($BindMode) {
+            return (
+                'SQL'    => "1=0",
+                'Values' => [],
+            );
+        }
         return "1=0";
     }
 
@@ -1538,7 +1540,7 @@ sub QueryCondition {
     return $SQL;
 }
 
-=item QueryStringEscape()
+=head2 QueryStringEscape()
 
 escapes special characters within a query string
 
@@ -1577,7 +1579,7 @@ sub QueryStringEscape {
     return $Param{QueryString};
 }
 
-=item Ping()
+=head2 Ping()
 
 checks if the database is reachable
 
@@ -1708,8 +1710,6 @@ sub DESTROY {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

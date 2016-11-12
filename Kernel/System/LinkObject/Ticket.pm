@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,6 +11,8 @@ package Kernel::System::LinkObject::Ticket;
 use strict;
 use warnings;
 
+use Kernel::System::VariableCheck qw(:all);
+
 our @ObjectDependencies = (
     'Kernel::Config',
     'Kernel::System::Log',
@@ -21,22 +23,16 @@ our @ObjectDependencies = (
 
 Kernel::System::LinkObject::Ticket
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 Ticket backend for the ticket link object.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $LinkObjectTicketObject = $Kernel::OM->Get('Kernel::System::LinkObject::Ticket');
 
 =cut
@@ -51,7 +47,7 @@ sub new {
     return $Self;
 }
 
-=item LinkListWithData()
+=head2 LinkListWithData()
 
 fill up the link list with data
 
@@ -137,7 +133,7 @@ sub LinkListWithData {
     return 1;
 }
 
-=item ObjectPermission()
+=head2 ObjectPermission()
 
 checks read permission for a given object and UserID.
 
@@ -170,7 +166,7 @@ sub ObjectPermission {
     );
 }
 
-=item ObjectDescriptionGet()
+=head2 ObjectDescriptionGet()
 
 return a hash of object descriptions
 
@@ -220,6 +216,7 @@ sub ObjectDescriptionGet {
     return if !%Ticket;
 
     my $ParamHook = $Kernel::OM->Get('Kernel::Config')->Get('Ticket::Hook') || 'Ticket#';
+    $ParamHook .= $Kernel::OM->Get('Kernel::Config')->Get('Ticket::HookDivider') || '';
 
     # create description
     %Description = (
@@ -230,7 +227,7 @@ sub ObjectDescriptionGet {
     return %Description;
 }
 
-=item ObjectSearch()
+=head2 ObjectSearch()
 
 return a hash list of the search results
 
@@ -280,8 +277,20 @@ sub ObjectSearch {
             ContentSearch => 'OR',
         );
     }
-    if ( $Param{SearchParams}->{Title} ) {
-        $Search{Title} = '*' . $Param{SearchParams}->{Title} . '*';
+    if ( $Param{SearchParams}->{TicketTitle} ) {
+        $Search{Title} = '*' . $Param{SearchParams}->{TicketTitle} . '*';
+    }
+
+    if ( IsArrayRefWithData( $Param{SearchParams}->{ArchiveID} ) ) {
+        if ( $Param{SearchParams}->{ArchiveID}->[0] eq 'AllTickets' ) {
+            $Search{ArchiveFlags} = [ 'y', 'n' ];
+        }
+        elsif ( $Param{SearchParams}->{ArchiveID}->[0] eq 'NotArchivedTickets' ) {
+            $Search{ArchiveFlags} = ['n'];
+        }
+        elsif ( $Param{SearchParams}->{ArchiveID}->[0] eq 'ArchivedTickets' ) {
+            $Search{ArchiveFlags} = ['y'];
+        }
     }
 
     # get ticket object
@@ -322,7 +331,7 @@ sub ObjectSearch {
     return \%SearchList;
 }
 
-=item LinkAddPre()
+=head2 LinkAddPre()
 
 link add pre event module
 
@@ -367,7 +376,7 @@ sub LinkAddPre {
     return 1;
 }
 
-=item LinkAddPost()
+=head2 LinkAddPost()
 
 link add pre event module
 
@@ -471,7 +480,7 @@ sub LinkAddPost {
     return 1;
 }
 
-=item LinkDeletePre()
+=head2 LinkDeletePre()
 
 link delete pre event module
 
@@ -516,7 +525,7 @@ sub LinkDeletePre {
     return 1;
 }
 
-=item LinkDeletePost()
+=head2 LinkDeletePost()
 
 link delete post event module
 
@@ -621,8 +630,6 @@ sub LinkDeletePost {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

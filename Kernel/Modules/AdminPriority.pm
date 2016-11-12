@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -10,6 +10,8 @@ package Kernel::Modules::AdminPriority;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -87,23 +89,26 @@ sub Run {
             );
 
             if ($Update) {
-                $Self->_Overview();
-                my $Output = $LayoutObject->Header();
-                $Output .= $LayoutObject->NavigationBar();
-                $Output .= $LayoutObject->Notify( Info => 'Priority updated!' );
-                $Output .= $LayoutObject->Output(
-                    TemplateFile => 'AdminPriority',
-                    Data         => \%Param,
-                );
-                $Output .= $LayoutObject->Footer();
-                return $Output;
+
+                # if the user would like to continue editing the priority, just redirect to the edit screen
+                if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+                    my $PriorityID = $ParamObject->GetParam( Param => 'PriorityID' ) || '';
+                    return $LayoutObject->Redirect(
+                        OP => "Action=$Self->{Action};Subaction=Change;PriorityID=$PriorityID"
+                    );
+                }
+                else {
+
+                    # otherwise return to overview
+                    return $LayoutObject->Redirect( OP => "Action=$Self->{Action}" );
+                }
             }
         }
 
         # something has gone wrong
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
-        $Output .= $LayoutObject->Notify( Priority => 'Error' );
+        $Output .= $LayoutObject->Notify( Priority => Translatable('Error') );
         $Self->_Edit(
             Action => 'Change',
             Errors => \%Errors,
@@ -171,7 +176,7 @@ sub Run {
                 $Self->_Overview();
                 my $Output = $LayoutObject->Header();
                 $Output .= $LayoutObject->NavigationBar();
-                $Output .= $LayoutObject->Notify( Info => 'Priority added!' );
+                $Output .= $LayoutObject->Notify( Info => Translatable('Priority added!') );
                 $Output .= $LayoutObject->Output(
                     TemplateFile => 'AdminPriority',
                     Data         => \%Param,
@@ -184,7 +189,7 @@ sub Run {
         # something has gone wrong
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
-        $Output .= $LayoutObject->Notify( Priority => 'Error' );
+        $Output .= $LayoutObject->Notify( Priority => Translatable('Error') );
         $Self->_Edit(
             Action => 'Add',
             Errors => \%Errors,
@@ -246,14 +251,6 @@ sub _Edit {
         },
     );
 
-    # shows header
-    if ( $Param{Action} eq 'Change' ) {
-        $LayoutObject->Block( Name => 'HeaderEdit' );
-    }
-    else {
-        $LayoutObject->Block( Name => 'HeaderAdd' );
-    }
-
     return 1;
 }
 
@@ -269,6 +266,7 @@ sub _Overview {
 
     $LayoutObject->Block( Name => 'ActionList' );
     $LayoutObject->Block( Name => 'ActionAdd' );
+    $LayoutObject->Block( Name => 'Filter' );
 
     $LayoutObject->Block(
         Name => 'OverviewResult',

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -19,18 +19,10 @@ $Selenium->RunTest(
     sub {
 
         # get helper object
-        $Kernel::OM->ObjectParamAdd(
-            'Kernel::System::UnitTest::Helper' => {
-                RestoreSystemConfiguration => 1,
-            },
-        );
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        # get sysconfig object
-        my $SysConfigObject = $Kernel::OM->Get('Kernel::System::SysConfig');
-
         # get dashboard Image plugin default sysconfig
-        my %ImageConfig = $SysConfigObject->ConfigItemGet(
+        my %ImageConfig = $Kernel::OM->Get('Kernel::System::SysConfig')->ConfigItemGet(
             Name    => 'DashboardBackend###0200-Image',
             Default => 1,
         );
@@ -39,7 +31,7 @@ $Selenium->RunTest(
         my %ImageUpdate = map { $_->{Key} => $_->{Content} }
             grep { defined $_->{Key} } @{ $ImageConfig{Setting}->[1]->{Hash}->[1]->{Item} };
 
-        $Kernel::OM->Get('Kernel::System::SysConfig')->ConfigItemUpdate(
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'DashboardBackend###0200-Image',
             Value => \%ImageUpdate,

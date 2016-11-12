@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -20,18 +20,10 @@ $Selenium->RunTest(
     sub {
 
         # get helper object
-        $Kernel::OM->ObjectParamAdd(
-            'Kernel::System::UnitTest::Helper' => {
-                RestoreSystemConfiguration => 1,
-            },
-        );
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        # get sysconfig object
-        my $SysConfigObject = $Kernel::OM->Get('Kernel::System::SysConfig');
-
         # enable SMIME in config
-        $SysConfigObject->ConfigItemUpdate(
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'SMIME',
             Value => 1
@@ -47,12 +39,12 @@ $Selenium->RunTest(
         mkpath( [$PrivatePath], 0, 0770 );    ## no critic
 
         # set SMIME paths in sysConfig
-        $SysConfigObject->ConfigItemUpdate(
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'SMIME::CertPath',
             Value => $CertPath,
         );
-        $SysConfigObject->ConfigItemUpdate(
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'SMIME::PrivatePath',
             Value => $PrivatePath,
@@ -72,25 +64,19 @@ $Selenium->RunTest(
         my $ScriptAlias = $ConfigObject->Get('ScriptAlias');
 
         # go to customer preferences
-        $Selenium->get("${ScriptAlias}customer.pl?Action=CustomerPreferences");
-
-        # wait until form has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        $Selenium->VerifiedGet("${ScriptAlias}customer.pl?Action=CustomerPreferences");
 
         # change customer SMIME certificate preference
         my $Location = $ConfigObject->Get('Home')
             . "/scripts/test/sample/SMIME/SMIMECertificate-1.asc";
         $Selenium->find_element( "#UserSMIMEKey", 'css' )->send_keys($Location);
-        $Selenium->find_element( "#UserSMIMEKey", 'css' )->submit();
-
-        # wait until form has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        $Selenium->find_element( "#UserSMIMEKey", 'css' )->VerifiedSubmit();
 
         # check for update SMIME certificate preference on screen
         $Self->True(
             index( $Selenium->get_page_source(), 'Certificate uploaded' ) > -1,
             'Customer preference SMIME certificate - updated'
-        );
+        ) || die "Could not upload certificate";
 
         # delete needed test directories
         for my $Directory ( $CertPath, $PrivatePath ) {

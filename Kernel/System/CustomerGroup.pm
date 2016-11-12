@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -14,6 +14,7 @@ use warnings;
 our @ObjectDependencies = (
     'Kernel::Config',
     'Kernel::System::Cache',
+    'Kernel::System::CustomerUser',
     'Kernel::System::DB',
     'Kernel::System::Group',
     'Kernel::System::Log',
@@ -24,22 +25,16 @@ our @ObjectDependencies = (
 
 Kernel::System::CustomerGroup - customer group lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All customer group functions. E. g. to add groups or to get a member list of a group.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $CustomerGroupObject = $Kernel::OM->Get('Kernel::System::CustomerGroup');
 
 =cut
@@ -57,7 +52,7 @@ sub new {
     return $Self;
 }
 
-=item GroupMemberAdd()
+=head2 GroupMemberAdd()
 
 to add a member to a group
 
@@ -144,7 +139,7 @@ sub GroupMemberAdd {
     return 1;
 }
 
-=item GroupMemberList()
+=head2 GroupMemberList()
 
 if GroupID is passed:
 returns a list of users of a group with ro/move_into/create/owner/priority/rw permissions
@@ -186,20 +181,6 @@ sub GroupMemberList {
         );
         return;
     }
-    my %Data;
-    my @Name;
-    my @ID;
-
-    # check if customer group feature is active, if not, return all groups
-    if ( !$Kernel::OM->Get('Kernel::Config')->Get('CustomerGroupSupport') ) {
-
-        # get permissions
-        %Data = $Kernel::OM->Get('Kernel::System::Group')->GroupList( Valid => 1 );
-        for ( sort keys %Data ) {
-            push @Name, $Data{$_};
-            push @ID,   $_;
-        }
-    }
 
     # create cache key
     my $CacheKey = 'GroupMemberList::' . $Param{Type} . '::' . $Param{Result} . '::';
@@ -215,45 +196,87 @@ sub GroupMemberList {
         Type => $Self->{CacheType},
         Key  => $CacheKey,
     );
+
     if ($Cache) {
         return @{$Cache} if ref $Cache eq 'ARRAY';
         return %{$Cache} if ref $Cache eq 'HASH';
     }
 
-    # get database object
-    my $DBObject = $Kernel::OM->Get('Kernel::System::DB');
+    my %Data;
+    my @Name;
+    my @ID;
 
-    # if it's active, return just the permitted groups
-    my $SQL = "SELECT g.id, g.name, gu.permission_key, gu.permission_value, gu.user_id "
-        . " FROM groups g, group_customer_user gu WHERE "
-        . " g.valid_id IN ( ${\(join ', ', $Kernel::OM->Get('Kernel::System::Valid')->ValidIDsGet())} ) AND "
-        . " g.id = gu.group_id AND gu.permission_value = 1 AND "
-        . " gu.permission_key IN ('" . $DBObject->Quote( $Param{Type} ) . "', 'rw') "
-        . " AND ";
-
-    if ( $Param{UserID} ) {
-        $SQL .= " gu.user_id = '" . $DBObject->Quote( $Param{UserID} ) . "'";
-    }
-    else {
-        $SQL .= " gu.group_id = " . $DBObject->Quote( $Param{GroupID}, 'Integer', ) . "";
-    }
-    $DBObject->Prepare( SQL => $SQL );
-    while ( my @Row = $DBObject->FetchrowArray() ) {
-        my $Key   = '';
-        my $Value = '';
-        if ( $Param{UserID} ) {
-            $Key   = $Row[0];
-            $Value = $Row[1];
-        }
-        else {
-            $Key   = $Row[4];
-            $Value = $Row[1];
-        }
+    # check if customer group feature is active, if not, return all groups
+    if ( !$Kernel::OM->Get('Kernel::Config')->Get('CustomerGroupSupport') ) {
 
         # get permissions
-        $Data{$Key} = $Value;
-        push @Name, $Value;
-        push @ID,   $Key;
+        %Data = $Kernel::OM->Get('Kernel::System::Group')->GroupList( Valid => 1 );
+        for ( sort keys %Data ) {
+            push @Name, $Data{$_};
+            push @ID,   $_;
+        }
+    }
+    else {
+        # get database object
+        my $DBObject = $Kernel::OM->Get('Kernel::System::DB');
+
+        # if it's active, return just the permitted groups
+        my $SQL = "SELECT g.id, g.name, gu.permission_key, gu.permission_value, gu.user_id "
+            . " FROM groups g, group_customer_user gu WHERE "
+            . " g.valid_id IN ( ${\(join ', ', $Kernel::OM->Get('Kernel::System::Valid')->ValidIDsGet())} ) AND "
+            . " g.id = gu.group_id AND gu.permission_value = 1 AND "
+            . " gu.permission_key IN ('" . $DBObject->Quote( $Param{Type} ) . "', 'rw') "
+            . " AND ";
+
+        if ( $Param{UserID} ) {
+            $SQL .= " gu.user_id = '" . $DBObject->Quote( $Param{UserID} ) . "'";
+        }
+        else {
+            $SQL .= " gu.group_id = " . $DBObject->Quote( $Param{GroupID}, 'Integer', ) . "";
+        }
+        $DBObject->Prepare( SQL => $SQL );
+
+        my @Values;
+
+        while ( my @Row = $DBObject->FetchrowArray() ) {
+            if ( $Param{UserID} ) {
+                push @Values, {
+                    Users => {
+                        $Row[0] => $Row[1],
+                    },
+                };
+            }
+            else {
+                push @Values, {
+                    CustomerUser => {
+                        $Row[4] => $Row[1],
+                    },
+                };
+            }
+        }
+
+        my $CustomerUserObject = $Kernel::OM->Get('Kernel::System::CustomerUser');
+
+        KEY:
+        for my $Value (@Values) {
+
+            my ($UserType) = keys %{$Value};
+            my ($Login)    = keys %{ $Value->{$UserType} };
+
+            # Bugfix #12285 - Check if customer user is valid.
+            if ( $Param{GroupID} && $UserType eq 'CustomerUser' ) {
+
+                my %User = $CustomerUserObject->CustomerUserDataGet(
+                    User => $Login,
+                );
+
+                next KEY if defined $User{ValidID} && $User{ValidID} != 1;
+            }
+
+            $Data{$Login} = $Value->{$UserType}->{$Login};
+            push @Name, $Value->{$UserType}->{$Login};
+            push @ID,   $Login;
+        }
     }
 
     # add always groups
@@ -306,7 +329,7 @@ sub GroupMemberList {
     return %Data;
 }
 
-=item GroupLookup()
+=head2 GroupLookup()
 
 get id or name for group
 
@@ -395,8 +418,6 @@ sub GroupLookup {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

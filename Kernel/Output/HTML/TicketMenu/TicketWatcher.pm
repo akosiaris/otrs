@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -8,8 +8,12 @@
 
 package Kernel::Output::HTML::TicketMenu::TicketWatcher;
 
+use base 'Kernel::Output::HTML::Base';
+
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our @ObjectDependencies = (
     'Kernel::System::Log',
@@ -17,19 +21,6 @@ our @ObjectDependencies = (
     'Kernel::System::Ticket',
     'Kernel::Output::HTML::Layout',
 );
-
-sub new {
-    my ( $Type, %Param ) = @_;
-
-    # allocate new hash for object
-    my $Self = {};
-    bless( $Self, $Type );
-
-    # get UserID param
-    $Self->{UserID} = $Param{UserID} || die "Got no UserID!";
-
-    return $Self;
-}
 
 sub Run {
     my ( $Self, %Param ) = @_;
@@ -94,8 +85,8 @@ sub Run {
             %{ $Param{Config} },
             %{ $Param{Ticket} },
             %Param,
-            Name        => 'Unwatch',
-            Description => 'Remove from list of watched tickets',
+            Name        => Translatable('Unwatch'),
+            Description => Translatable('Remove from list of watched tickets'),
             Link =>
                 'Action=AgentTicketWatcher;Subaction=Unsubscribe;TicketID=[% Data.TicketID | uri %];[% Env("ChallengeTokenParam") | html %]',
         };
@@ -106,8 +97,8 @@ sub Run {
         %{ $Param{Config} },
         %{ $Param{Ticket} },
         %Param,
-        Name        => 'Watch',
-        Description => 'Add to list of watched tickets',
+        Name        => Translatable('Watch'),
+        Description => Translatable('Add to list of watched tickets'),
         Link =>
             'Action=AgentTicketWatcher;Subaction=Subscribe;TicketID=[% Data.TicketID | uri %];[% Env("ChallengeTokenParam") | html %]',
     };

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -105,7 +106,7 @@ sub Run {
             NewCustomerID NewPendingTime NewPendingTimeType NewCustomerUserLogin
             NewStateID NewQueueID NewPriorityID NewOwnerID NewResponsibleID
             NewTypeID NewServiceID NewSLAID
-            NewNoteFrom NewNoteSubject NewNoteBody NewNoteTimeUnits NewModule
+            NewNoteFrom NewNoteSubject NewNoteBody NewArticleType NewNoteTimeUnits NewModule
             NewParamKey1 NewParamKey2 NewParamKey3 NewParamKey4
             NewParamValue1 NewParamValue2 NewParamValue3 NewParamValue4
             NewParamKey5 NewParamKey6 NewParamKey7 NewParamKey8
@@ -179,7 +180,7 @@ sub Run {
         for my $DynamicFieldConfig ( @{ $Self->{DynamicField} } ) {
             next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-            # extract the dynamic field value form the web request
+            # extract the dynamic field value from the web request
             my $DynamicFieldValue = $DynamicFieldBackendObject->EditFieldValueGet(
                 DynamicFieldConfig      => $DynamicFieldConfig,
                 ParamObject             => $ParamObject,
@@ -280,9 +281,18 @@ sub Run {
             );
 
             if ($JobAddResult) {
-                return $LayoutObject->Redirect(
-                    OP => "Action=$Self->{Action}",
-                );
+
+                # if the user would like to continue editing the generic agent job, just redirect to the edit screen
+                if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+                    my $Profile = $Self->{Profile} || '';
+                    return $LayoutObject->Redirect( OP => "Action=$Self->{Action};Subaction=Update;Profile=$Profile" );
+                }
+                else {
+
+                    # otherwise return to overview
+                    return $LayoutObject->Redirect( OP => "Action=$Self->{Action}" );
+                }
+
             }
             else {
                 $Errors{ProfileInvalid}    = 'ServerError';
@@ -356,8 +366,12 @@ sub Run {
         Name => 'ActionAdd',
     );
     $LayoutObject->Block(
+        Name => 'Filter',
+    );
+    $LayoutObject->Block(
         Name => 'Overview',
     );
+
     my %Jobs = $GenericAgentObject->JobList();
 
     # if there are any data, it is shown
@@ -408,7 +422,8 @@ sub _MaskUpdate {
             Name => $Self->{Profile},
         );
     }
-    $JobData{Profile} = $Self->{Profile};
+    $JobData{Profile}   = $Self->{Profile};
+    $JobData{Subaction} = $Self->{Subaction};
 
     # get config object
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
@@ -652,21 +667,21 @@ sub _MaskUpdate {
         );
         $JobData{ $Type . 'TimePointStart' } = $LayoutObject->BuildSelection(
             Data => {
-                Last   => 'within the last ...',
-                Next   => 'within the next ...',
-                Before => 'more than ... ago',
+                Last   => Translatable('within the last ...'),
+                Next   => Translatable('within the next ...'),
+                Before => Translatable('more than ... ago'),
             },
             Name       => $Type . 'TimePointStart',
             SelectedID => $JobData{ $Type . 'TimePointStart' } || 'Last',
         );
         $JobData{ $Type . 'TimePointFormat' } = $LayoutObject->BuildSelection(
             Data => {
-                minute => 'minute(s)',
-                hour   => 'hour(s)',
-                day    => 'day(s)',
-                week   => 'week(s)',
-                month  => 'month(s)',
-                year   => 'year(s)',
+                minute => Translatable('minute(s)'),
+                hour   => Translatable('hour(s)'),
+                day    => Translatable('day(s)'),
+                week   => Translatable('week(s)'),
+                month  => Translatable('month(s)'),
+                year   => Translatable('year(s)'),
             },
             Name       => $Type . 'TimePointFormat',
             SelectedID => $JobData{ $Type . 'TimePointFormat' },
@@ -830,7 +845,7 @@ sub _MaskUpdate {
         # get list type
         my %Service = $Kernel::OM->Get('Kernel::System::Service')->ServiceList(
             Valid        => 1,
-            KeepChildren => 1,
+            KeepChildren => $ConfigObject->Get('Ticket::Service::KeepChildren') // 0,
             UserID       => $Self->{UserID},
         );
         my %NewService = %Service;
@@ -926,9 +941,9 @@ sub _MaskUpdate {
 
         $JobData{'SearchInArchiveStrg'} = $LayoutObject->BuildSelection(
             Data => {
-                ArchivedTickets    => 'Archived tickets',
-                NotArchivedTickets => 'Unarchived tickets',
-                AllTickets         => 'All tickets',
+                ArchivedTickets    => Translatable('Archived tickets'),
+                NotArchivedTickets => Translatable('Unarchived tickets'),
+                AllTickets         => Translatable('All tickets'),
             },
             Name       => 'SearchInArchive',
             SelectedID => $JobData{SearchInArchive} || 'AllTickets',
@@ -942,8 +957,8 @@ sub _MaskUpdate {
 
         $JobData{'NewArchiveFlagStrg'} = $LayoutObject->BuildSelection(
             Data => {
-                y => 'archive tickets',
-                n => 'restore tickets from archive',
+                y => Translatable('archive tickets'),
+                n => Translatable('restore tickets from archive'),
             },
             Name         => 'NewArchiveFlag',
             PossibleNone => 1,
@@ -1161,6 +1176,27 @@ sub _MaskUpdate {
         push @EventTypeList, $Type;
     }
 
+    my %ArticleTypeData = (
+        'note-internal' => 'note-internal',
+        'note-external' => 'note-external',
+    );
+
+    my $NewArticleType = $LayoutObject->BuildSelection(
+        Data        => \%ArticleTypeData,
+        Name        => 'NewArticleType',
+        Multiple    => 0,
+        Size        => 2,
+        Translation => 1,
+        SelectedID  => $JobData{NewArticleType} || 'note-internal',
+        Class       => 'Modernize',
+    );
+    $LayoutObject->Block(
+        Name => 'NewArticleType',
+        Data => {
+            NewArticleType => $NewArticleType,
+        },
+    );
+
     # create event type selector
     my $EventTypeStrg = $LayoutObject->BuildSelection(
         Data          => \@EventTypeList,
@@ -1200,10 +1236,12 @@ sub _MaskRun {
     }
     else {
         $LayoutObject->FatalError(
-            Message => "Need Profile!",
+            Message => Translatable('Need Profile!'),
         );
     }
     $JobData{Profile} = $Self->{Profile};
+    $Param{Subaction} = $Self->{Subaction};
+    $Param{Profile}   = $Self->{Profile};
 
     # dynamic fields search parameters for ticket search
     my %DynamicFieldSearchParameters;
@@ -1253,17 +1291,27 @@ sub _MaskRun {
         }
     }
 
-    # get ticket object
+    # remove residual dynamic field data from job definition
+    # they are passed through dedicated variable anyway
+    PARAM_NAME:
+    for my $ParamName ( sort keys %JobData ) {
+        next PARAM_NAME if !( $ParamName =~ /^DynamicField_/ );
+        delete $JobData{$ParamName};
+    }
+
+    # get needed objects
     my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
     # perform ticket search
+    my $GenericAgentTicketSearch = $ConfigObject->Get("Ticket::GenericAgentTicketSearch") || {};
     my $Counter = $TicketObject->TicketSearch(
         Result          => 'COUNT',
         SortBy          => 'Age',
         OrderBy         => 'Down',
         UserID          => 1,
         Limit           => 60_000,
-        ConditionInline => 1,
+        ConditionInline => $GenericAgentTicketSearch->{ExtendedSearchCondition},
         %JobData,
         %DynamicFieldSearchParameters,
     ) || 0;
@@ -1274,7 +1322,7 @@ sub _MaskRun {
         OrderBy         => 'Down',
         UserID          => 1,
         Limit           => 30,
-        ConditionInline => 1,
+        ConditionInline => $GenericAgentTicketSearch->{ExtendedSearchCondition},
         %JobData,
         %DynamicFieldSearchParameters,
     );
@@ -1294,7 +1342,7 @@ sub _MaskRun {
         },
     );
 
-    my $RunLimit = $Kernel::OM->Get('Kernel::Config')->Get('Ticket::GenericAgentRunLimit');
+    my $RunLimit = $ConfigObject->Get('Ticket::GenericAgentRunLimit');
     if ( $Counter > $RunLimit ) {
         $LayoutObject->Block(
             Name => 'RunLimit',
@@ -1358,7 +1406,7 @@ sub _MaskRun {
 
     # HTML search mask output
     my $Output = $LayoutObject->Header(
-        Title => 'Affected Tickets',
+        Title => Translatable('Affected Tickets'),
     );
     $Output .= $LayoutObject->NavigationBar();
     $Output .= $LayoutObject->Output(
@@ -1376,7 +1424,7 @@ sub _StopWordsServerErrorsGet {
 
     if ( !%Param ) {
         $Kernel::OM->Get('Kernel::Output::HTML::Layout')->FatalError(
-            Message => "Got no values to check.",
+            Message => Translatable('Got no values to check.'),
         );
     }
 

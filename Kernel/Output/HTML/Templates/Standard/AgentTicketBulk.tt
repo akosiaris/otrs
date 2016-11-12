@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -62,9 +62,6 @@
 
                             <label class="Mandatory" for="Body"><span class="Marker">*</span> [% Translate("Text") | html %]:</label>
                             <div class="RichTextField">
-[% RenderBlockStart("RichText") %]
-[% InsertTemplate("RichTextEditor.tt") %]
-[% RenderBlockEnd("RichText") %]
                                 <textarea id="Body" class="RichText Validate_DependingRequiredAND Validate_Depending_Subject [% Data.BodyInvalid %]" name="Body" rows="15" cols="[% Config("Ticket::Frontend::TextAreaNote") %]">[% Data.Body | html %]</textarea>
                                 <div id="BodyError" class="TooltipErrorMessage"><p>[% Translate("This field is required.") | html %]</p></div>
                                 <div id="BodyServerError" class="TooltipErrorMessage"><p>[% Translate("This field is required.") | html %]</p></div>
@@ -122,7 +119,6 @@
 
                             <label class="Mandatory" for="EmailBody"><span class="Marker">*</span> [% Translate("Text") | html %]:</label>
                             <div class="RichTextField">
-# RichTextEditor has already been included previously (if enabled)
                                 <textarea id="EmailBody" class="RichText Validate_DependingRequiredAND Validate_Depending_EmailSubject [% Data.BodyInvalid %]" name="EmailBody" rows="15" cols="[% Config("Ticket::Frontend::TextAreaNote") %]">[% Data.EmailBody | html %]</textarea>
                                 <div id="EmailBodyError" class="TooltipErrorMessage"><p>[% Translate("This field is required.") | html %]</p></div>
                                 <div id="EmailBodyServerError" class="TooltipErrorMessage"><p>[% Translate("This field is required.") | html %]</p></div>
@@ -217,16 +213,6 @@
                         </div>
                     </div>
                     <div class="Clear"></div>
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-$('#MergeTo').bind('blur', function() {
-    if ($(this).val()) {
-        $('#OptionMergeTo').prop('checked', true);
-    }
-});
-//]]></script>
-[% END %]
-
 
                     <label for="LinkTogether">[% Translate("Link together") | html %]:</label>
                     <div class="Field">
@@ -254,24 +240,9 @@ $('#MergeTo').bind('blur', function() {
             </div>
         </div>
         <div class="Footer">
-            <button class="Primary" id="submitRichText" accesskey="g" title="[% Translate("Submit") | html %] (g)" type="submit" value="[% Translate("Submit") | html %]">[% Translate("Submit") | html %]</button>
+            <button class="Primary CallForAction" id="submitRichText" accesskey="g" title="[% Translate("Submit") | html %] (g)" type="submit" value="[% Translate("Execute Bulk Action") | html %]"><span>[% Translate("Execute Bulk Action") | html %]</span></button>
         </div>
     </div>
 </form>
-[% RenderBlockStart("ParentReload") %]
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-Core.UI.Popup.ExecuteInParentWindow(function(WindowObject) {
-    WindowObject.Core.UI.Popup.FirePopupEvent('URL', { URL: '[% Env("Baselink") %][% Data.URL %]' }, false);
-});
-//]]></script>
-[% END %]
-[% RenderBlockEnd("ParentReload") %]
-
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    Core.Agent.TicketAction.Init();
-//]]></script>
-[% END %]
 
 [% RenderBlockEnd("BulkAction") %]

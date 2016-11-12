@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -36,22 +36,18 @@ sub ArticleStorageInit {
     );
     $Self->{ArticleContentPath} = $Year . '/' . $Month . '/' . $Day;
 
-    # Check fs write permissions.
-    # Generate a thread-safe article check directory.
-    my ( $Seconds, $Microseconds ) = Time::HiRes::gettimeofday();
-    my $PermissionCheckDirectory
-        = "check_permissions_${$}_" . ( int rand 1_000_000_000 ) . "_${Seconds}_${Microseconds}";
-    my $Path = "$Self->{ArticleDataDir}/$Self->{ArticleContentPath}/" . $PermissionCheckDirectory;
-    if ( File::Path::mkpath( $Path, 0, 0770 ) ) {    ## no critic
-        rmdir $Path;
-    }
-    else {
-        my $Error = $!;
+    my $ArticleDir = "$Self->{ArticleDataDir}/$Self->{ArticleContentPath}/";
+
+    File::Path::mkpath( $ArticleDir, 0, 0770 );    ## no critic
+
+    # check write permissions
+    if ( !-w $ArticleDir ) {
+
         $Kernel::OM->Get('Kernel::System::Log')->Log(
             Priority => 'notice',
-            Message  => "Can't create $Path: $Error, try: \$OTRS_HOME/bin/otrs.SetPermissions.pl!",
+            Message  => "Can't write $ArticleDir! try: \$OTRS_HOME/bin/otrs.SetPermissions.pl!",
         );
-        die "Can't create $Path: $Error, try: \$OTRS_HOME/bin/otrs.SetPermissions.pl!";
+        die "Can't write $ArticleDir! try: \$OTRS_HOME/bin/otrs.SetPermissions.pl!";
     }
 
     # get config object
@@ -376,22 +372,20 @@ sub ArticleWriteAttachment {
         ArticleID => $Param{ArticleID},
         UserID    => $Param{UserID},
     );
-    if ( !$Param{Force} ) {
 
-        # Normalize filenames to find file names which are identical but in a different unicode form.
-        #   This is needed because Mac OS (HFS+) converts all filenames to NFD internally.
-        #   Without this, the same file might be overwritten because the strings are not equal.
-        for ( sort keys %Index ) {
-            $UsedFile{ Unicode::Normalize::NFC( $Index{$_}->{Filename} ) } = 1;
-        }
-        for ( my $i = 1; $i <= 50; $i++ ) {
-            if ( exists $UsedFile{ Unicode::Normalize::NFC($NewFileName) } ) {
-                if ( $Param{Filename} =~ /^(.*)\.(.+?)$/ ) {
-                    $NewFileName = "$1-$i.$2";
-                }
-                else {
-                    $NewFileName = "$Param{Filename}-$i";
-                }
+    # Normalize filenames to find file names which are identical but in a different unicode form.
+    #   This is needed because Mac OS (HFS+) converts all filenames to NFD internally.
+    #   Without this, the same file might be overwritten because the strings are not equal.
+    for ( sort keys %Index ) {
+        $UsedFile{ Unicode::Normalize::NFC( $Index{$_}->{Filename} ) } = 1;
+    }
+    for ( my $i = 1; $i <= 50; $i++ ) {
+        if ( exists $UsedFile{ Unicode::Normalize::NFC($NewFileName) } ) {
+            if ( $Param{Filename} =~ /^(.*)\.(.+?)$/ ) {
+                $NewFileName = "$1-$i.$2";
+            }
+            else {
+                $NewFileName = "$Param{Filename}-$i";
             }
         }
     }

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -27,22 +27,16 @@ our @ObjectDependencies = (
 
 Kernel::System::ProcessManagement::TransitionAction::TicketStateSet - A module to set the ticket state
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All TicketStateSet functions.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $TicketStateSetObject = $Kernel::OM->Get('Kernel::System::ProcessManagement::TransitionAction::TicketStateSet');
 
 =cut
@@ -57,7 +51,7 @@ sub new {
     return $Self;
 }
 
-=item Run()
+=head2 Run()
 
     Run Data
 
@@ -239,8 +233,6 @@ sub Run {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

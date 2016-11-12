@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -23,23 +23,17 @@ our @ObjectDependencies = (
 
 Kernel::System::Spelling - spelling lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 This module is the spellchecker backend wrapper of OTRS.
 Currently, ispell and aspell are supported as spellchecker backends.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $SpellingObject = $Kernel::OM->Get('Kernel::System::Spelling');
 
 =cut
@@ -54,7 +48,7 @@ sub new {
     return $Self;
 }
 
-=item Check()
+=head2 Check()
 
 spelling check for some text
 
@@ -261,7 +255,7 @@ sub Check {
     return %Data;
 }
 
-=item Error()
+=head2 Error()
 
 check if spelling check returns a system error (read log backend for error message)
 
@@ -276,8 +270,6 @@ sub Error {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

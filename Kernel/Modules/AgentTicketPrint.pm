@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,7 +11,9 @@ package Kernel::Modules::AgentTicketPrint;
 use strict;
 use warnings;
 
+use Kernel::System::DateTime;
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -30,17 +32,20 @@ sub Run {
 
     # get ticket object
     my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+    my $ParamObject  = $Kernel::OM->Get('Kernel::System::Web::Request');
 
     my $Output;
     my $QueueID = $TicketObject->TicketQueueID( TicketID => $Self->{TicketID} );
-    my $ArticleID = $Kernel::OM->Get('Kernel::System::Web::Request')->GetParam( Param => 'ArticleID' );
+    my $ArticleID = $ParamObject->GetParam( Param => 'ArticleID' );
 
     # get layout object
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
 
     # check needed stuff
     if ( !$Self->{TicketID} || !$QueueID ) {
-        return $LayoutObject->ErrorScreen( Message => 'Need TicketID!' );
+        return $LayoutObject->ErrorScreen(
+            Message => Translatable('Need TicketID!'),
+        );
     }
 
     # check permissions
@@ -179,7 +184,13 @@ sub Run {
     my $PDFObject = $Kernel::OM->Get('Kernel::System::PDF');
 
     my $PrintedBy = $LayoutObject->{LanguageObject}->Translate('printed by');
-    my $Time      = $LayoutObject->{Time};
+
+    my $DateTimeString = $Kernel::OM->Create('Kernel::System::DateTime')->ToString();
+    my $Time           = $LayoutObject->{LanguageObject}->FormatTimeString(
+        $DateTimeString,
+        'DateFormat',
+    );
+
     my %Page;
 
     # get maximum number of pages
@@ -187,7 +198,8 @@ sub Run {
     if ( !$Page{MaxPages} || $Page{MaxPages} < 1 || $Page{MaxPages} > 1000 ) {
         $Page{MaxPages} = 100;
     }
-    my $HeaderRight  = $ConfigObject->Get('Ticket::Hook') . $Ticket{TicketNumber};
+    my $HeaderRight
+        = $ConfigObject->Get('Ticket::Hook') . $ConfigObject->Get('Ticket::HookDivider') . $Ticket{TicketNumber};
     my $HeadlineLeft = $HeaderRight;
     my $Title        = $HeaderRight;
     if ( $Ticket{Title} ) {
@@ -291,25 +303,24 @@ sub Run {
 
     # output articles
     $Self->_PDFOutputArticles(
-        PageData    => \%Page,
-        ArticleData => \@ArticleBox,
+        PageData      => \%Page,
+        ArticleData   => \@ArticleBox,
+        ArticleNumber => $ParamObject->GetParam( Param => 'ArticleNumber' ),
     );
 
-    # get ticket object
-    my $TimeObject = $Kernel::OM->Get('Kernel::System::Time');
+    # assemble file name
+    my $DateTimeObject = $Kernel::OM->Create('Kernel::System::DateTime');
+    if ( $Self->{UserTimeZone} ) {
+        $DateTimeObject->ToTimeZone( TimeZone => $Self->{UserTimeZone} );
+    }
+    my $Filename = 'Ticket_' . $Ticket{TicketNumber} . '_';
+    $Filename .= $DateTimeObject->Format( Format => '%Y-%m-%d_%H:%M' );
+    $Filename .= '.pdf';
 
     # return the pdf document
-    my $Filename = 'Ticket_' . $Ticket{TicketNumber};
-    my ( $s, $m, $h, $D, $M, $Y ) = $TimeObject->SystemTime2Date(
-        SystemTime => $TimeObject->SystemTime(),
-    );
-    $M = sprintf( "%02d", $M );
-    $D = sprintf( "%02d", $D );
-    $h = sprintf( "%02d", $h );
-    $m = sprintf( "%02d", $m );
     my $PDFString = $PDFObject->DocumentOutput();
     return $LayoutObject->Attachment(
-        Filename    => $Filename . "_" . "$Y-$M-$D" . "_" . "$h-$m.pdf",
+        Filename    => $Filename,
         ContentType => "application/pdf",
         Content     => $PDFString,
         Type        => 'inline',
@@ -972,7 +983,14 @@ sub _PDFOutputArticles {
             Y    => -6,
         );
 
-        my $ArticleNumber = $ZoomExpandSort eq 'reverse' ? $ArticleCount - $ArticleCounter + 1 : $ArticleCounter;
+        # get article number
+        my $ArticleNumber;
+        if ( $Param{ArticleNumber} ) {
+            $ArticleNumber = $Param{ArticleNumber};
+        }
+        else {
+            $ArticleNumber = $ZoomExpandSort eq 'reverse' ? $ArticleCount - $ArticleCounter + 1 : $ArticleCounter;
+        }
 
         # article number tag
         $PDFObject->Text(
@@ -1116,13 +1134,15 @@ sub _PDFOutputArticles {
             my $Lines;
             if ( IsArrayRefWithData( $Article{Body} ) ) {
                 for my $Line ( @{ $Article{Body} } ) {
+                    my $CreateTime
+                        = $LayoutObject->{LanguageObject}->FormatTimeString( $Line->{CreateTime}, 'DateFormat' );
                     if ( $Line->{SystemGenerated} ) {
-                        $Lines .= '[' . $Line->{CreateTime} . '] ' . $Line->{MessageText} . "\n";
+                        $Lines .= '[' . $CreateTime . '] ' . $Line->{MessageText} . "\n";
                     }
                     else {
                         $Lines
                             .= '['
-                            . $Line->{CreateTime} . '] '
+                            . $CreateTime . '] '
                             . $Line->{ChatterName} . ' '
                             . $Line->{MessageText} . "\n";
                     }

@@ -1,16 +1,10 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
 # did not receive this file, see http://www.gnu.org/licenses/agpl.txt.
 # --
-
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    Core.Agent.Admin.SysConfig.Init();
-//]]></script>
-[% END %]
 
 <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
     <h1>[% Translate("SysConfig") | html %]</h1>
@@ -34,7 +28,7 @@
     <div class="ContentColumn">
         <div class="WidgetSimple">
             <div class="Header">
-                <h2>[% Translate("Edit Config Settings") | html %] in [% Data.Group | html %] -&gt; [% Data.SubGroup %]</h2>
+                <h2>[% Translate("Edit Config Settings in %s → %s", Data.Group, Data.SubGroup) | html %]</h2>
             </div>
             <div class="Content">
 
@@ -149,7 +143,7 @@
 [% RenderBlockStart("ConfigElementHashContent2") %]
 <!-- sub-hash or sub-array -->
                                 <label class="KeyWithComplexValue">
-                                    [% Data.Key | html %]:
+                                    [% Translate(Data.Key) | html %]:
                                     <input type="hidden" name="[% Data.ElementKey | html %]Key[]" value="[% Data.Key | html %]" size="20"/>
                                 </label>
                                 <input type="hidden" name="[% Data.ElementKey | html %]Content[]" value="[% Data.Content | html %]"/>
@@ -375,7 +369,7 @@
                                 <br/>
 
 [% RenderBlockStart("ConfigElementFrontendModuleRegContentNavBarModule") %]
-                                <label class="KeyWithComplexValue">NavBarModule:</label>
+                                <label class="KeyWithComplexValue">[% Translate("NavBar module") | html %]:</label>
                                 <div class="NavBar">
                                     <label class="SingleKey" for="[% Data.ElementKeyID | html %]_[% Data.Index %]_Module">[% Translate("Module") | html %]:</label>
                                     <input class="SingleContent" type="text" id="[% Data.ElementKeyID | html %]_[% Data.Index %]_Module" name="[% Data.ElementKey | html %]#Module[]" value="[% Data.ContentModule | html %]" [% Data.ReadOnlyAttribute %]/>
@@ -458,7 +452,7 @@
 
 [% RenderBlockStart("ConfigElementTimeWorkingHours") %]
 [% RenderBlockStart("ConfigElementTimeWorkingHoursContent") %]
-                            <label class="KeyWithComplexValue">[% Data.Weekday | html %]</label>
+                            <label class="KeyWithComplexValue">[% Translate(Data.Weekday) | html %]</label>
                             <div class="WorkingHours">
 [% RenderBlockStart("ConfigElementTimeWorkingHoursHours") %]
                                 <div class="FloatBox">
@@ -493,47 +487,3 @@
     </div>
     <div class="Clear"></div>
 </div>
-
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    $('fieldset > p.Description').each(function() {
-
-        var MaxLength = 200,
-            Length = $(this).text().length,
-            ShortText,
-            FullText,
-            LinkText = [% Translate("Show more") | JSON %],
-            OverlayTitle = $(this)
-                .closest('fieldset')
-                .find('h3')
-                .find('label')
-                .text();
-
-        // if the full description text is too long, cut it and
-        // show a "info" button which will open a dialog.
-        if ( Length > MaxLength && Length > MaxLength + 100 ) {
-
-            FullText  = $(this).text();
-            $(this).text(FullText.substr(0, MaxLength) + '...');
-
-            $(this)
-                .append('&nbsp;<a href="#" class="DescriptionOverlay">' + LinkText + '</a>')
-                .find('a.DescriptionOverlay')
-                .bind('click', function() {
-
-                    Core.UI.Dialog.ShowDialog({
-                        Modal: true,
-                        Title: OverlayTitle,
-                        HTML: '<div style="padding: 15px; line-height: 150%; width: 550px;">' + FullText + '</div>',
-                        PositionTop: '100px',
-                        PositionLeft: 'Center',
-                        CloseOnEscape: true,
-                        CloseOnClickOutside: true
-                    });
-
-                    return false;
-                });
-        }
-    });
-//]]></script>
-[% END %]

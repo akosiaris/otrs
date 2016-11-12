@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -43,7 +44,7 @@ sub Run {
         # check for WebserviceID
         if ( !$WebserviceID ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Need WebserviceID!",
+                Message => Translatable('Need WebserviceID!'),
             );
         }
 
@@ -53,7 +54,8 @@ sub Run {
         # check for valid web service configuration
         if ( !IsHashRefWithData($WebserviceData) ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Could not get data for WebserviceID $WebserviceID",
+                Message => $LayoutObject->{LanguageObject}
+                    ->Translate( 'Could not get data for WebserviceID %s', $WebserviceID ),
             );
         }
 
@@ -77,7 +79,7 @@ sub Run {
         # check for WebserviceID
         if ( !$WebserviceID ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Need WebserviceID!",
+                Message => Translatable('Need WebserviceID!'),
             );
         }
 
@@ -89,7 +91,8 @@ sub Run {
         # check for valid web service configuration
         if ( !IsHashRefWithData($WebserviceData) ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Could not get data for WebserviceID $WebserviceID",
+                Message => $LayoutObject->{LanguageObject}
+                    ->Translate( 'Could not get data for WebserviceID %s', $WebserviceID ),
             );
         }
 
@@ -123,7 +126,7 @@ sub Run {
 
                     # add server error error class
                     $Error{ $ParamName . 'ServerError' }        = 'ServerError';
-                    $Error{ $ParamName . 'ServerErrorMessage' } = 'This field is required';
+                    $Error{ $ParamName . 'ServerErrorMessage' } = Translatable('This field is required');
 
                     next NEEDED;
                 }
@@ -148,7 +151,7 @@ sub Run {
                             'InvokerControllerMapping'
                                 . $CurrentInvoker
                                 . 'ServerErrorMessage'
-                        } = 'This field is required';
+                        } = Translatable('This field is required');
                         next INVOKER;
                     }
 
@@ -216,7 +219,7 @@ sub Run {
 
                     # add server error error class
                     $Error{ $ParamName . 'ServerError' }        = 'ServerError';
-                    $Error{ $ParamName . 'ServerErrorMessage' } = 'This field is required';
+                    $Error{ $ParamName . 'ServerErrorMessage' } = Translatable('This field is required');
 
                     next NEEDED;
                 }
@@ -238,7 +241,7 @@ sub Run {
                     if ( !$Route ) {
                         $Error{ 'RouteOperationMapping' . $CurrentOperation . 'ServerError' } = 'ServerError';
                         $Error{ 'RouteOperationMapping' . $CurrentOperation . 'ServerErrorMessage' }
-                            = 'This field is required';
+                            = Translatable('This field is required');
                         next OPERATION;
                     }
 
@@ -261,7 +264,7 @@ sub Run {
 
                 # add server error error class
                 $Error{MaxLengthServerError}        = 'ServerError';
-                $Error{MaxLengthServerErrorMessage} = 'This field should be an integer number.';
+                $Error{MaxLengthServerErrorMessage} = Translatable('This field should be an integer number.');
             }
         }
 
@@ -305,7 +308,7 @@ sub Run {
     }
 
     return $LayoutObject->ErrorScreen(
-        Message => "Need Subaction!",
+        Message => Translatable('Need Subaction!'),
     );
 }
 
@@ -335,36 +338,6 @@ sub _ShowEdit {
     $Param{X509CAFile}     = $TransportConfig->{X509}->{X509CAFile};
     $Param{KeepAlive}      = $TransportConfig->{KeepAlive};
     $Param{MaxLength}      = $TransportConfig->{MaxLength};
-
-    # call bread crumbs blocks
-    $LayoutObject->Block(
-        Name => 'WebservicePathElement',
-        Data => {
-            Name => 'Web Services',
-            Link => 'Action=AdminGenericInterfaceWebservice',
-            Nav  => '',
-        },
-    );
-    $LayoutObject->Block(
-        Name => 'WebservicePathElement',
-        Data => {
-            Name => $Param{WebserviceName},
-            Link => 'Action=AdminGenericInterfaceWebservice;Subaction=' . $Param{Action}
-                . ';WebserviceID=' . $Param{WebserviceID},
-            Nav => '',
-        },
-    );
-
-    $LayoutObject->Block(
-        Name => 'WebservicePathElement',
-        Data => {
-            Name => $Param{CommunicationType} . ' Transport ' . $Param{Type},
-            Link => 'Action=AdminGenericInterfaceTransportHTTPREST;Subaction=' . $Param{Action}
-                . ';CommunicationType=' . $Param{CommunicationType}
-                . ';WebserviceID=' . $Param{WebserviceID},
-            Nav => '',
-        },
-    );
 
     my @PossibleRequestMethods = qw(GET POST PUT PATCH DELETE HEAD OPTIONS CONNECT TRACE);
 

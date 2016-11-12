@@ -1,5 +1,5 @@
 // --
-// Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+// Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 // --
 // This software comes with ABSOLUTELY NO WARRANTY. For details, see
 // the enclosed file COPYING for license information (AGPL). If you
@@ -75,11 +75,12 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
                 // update services (trigger ServiceID change event)
                 Core.AJAX.FormUpdate($('#CustomerID').closest('form'), 'AJAXUpdate', 'ServiceID', ['Dest', 'SelectedCustomerUser', 'NextStateID', 'PriorityID', 'ServiceID', 'SLAID', 'CryptKeyID', 'OwnerAll', 'ResponsibleAll', 'TicketFreeText1', 'TicketFreeText2', 'TicketFreeText3', 'TicketFreeText4', 'TicketFreeText5', 'TicketFreeText6', 'TicketFreeText7', 'TicketFreeText8', 'TicketFreeText9', 'TicketFreeText10', 'TicketFreeText11', 'TicketFreeText12', 'TicketFreeText13', 'TicketFreeText14', 'TicketFreeText15', 'TicketFreeText16']);
             }
-            if (Core.Config.Get('Action') === 'AgentTicketProcess'){
+            if (Core.Config.Get('Action') === 'AgentTicketProcess' &&
+                typeof Core.Config.Get('CustomerFieldsToUpdate') !== 'undefined'){
                 // reset service
                 $('#ServiceID').attr('selectedIndex', 0);
                 // update services (trigger ServiceID change event)
-                Core.AJAX.FormUpdate($('#CustomerID').closest('form'), 'AJAXUpdate', 'ServiceID', Core.Config.Get('ProcessManagement.UpdatableFields'));
+                Core.AJAX.FormUpdate($('#CustomerID').closest('form'), 'AJAXUpdate', 'ServiceID', Core.Config.Get('CustomerFieldsToUpdate'));
             }
         });
     }
@@ -104,7 +105,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
         };
 
         // check if customer tickets should be shown
-        if (!parseInt(Core.Config.Get('CustomerSearch.ShowCustomerTickets'), 10)) {
+        if (typeof Core.Config.Get('CustomerSearch') !== 'undefined' && !parseInt(Core.Config.Get('CustomerSearch').ShowCustomerTickets, 10)) {
             return;
         }
 
@@ -142,7 +143,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
             Core.UI.Accordion.Init($('.Preview > ul'), 'li h3 a', '.HiddenBlock');
 
             if (Core.Config.Get('Action') === 'AgentTicketCustomer') {
-                $('a.MasterActionLink').bind('click', function () {
+                $('a.MasterActionLink').on('click', function () {
                     var that = this;
                     Core.UI.Popup.ExecuteInParentWindow(function(WindowObject) {
                         WindowObject.Core.UI.Popup.FirePopupEvent('URL', { URL: that.href });
@@ -180,7 +181,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
         }
 
         // Check if multiple from entries are allowed
-        if (Core.Config.Get('Ticket::Frontend::AgentTicketPhone::AllowMultipleFrom') === "1") {
+        if (parseInt(Core.Config.Get('CustomerSearch').AllowMultipleFrom, 10)) {
             return;
         }
 
@@ -221,7 +222,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
         if (isJQueryObject($Element)) {
             // Hide tooltip in autocomplete field, if user already typed something to prevent the autocomplete list
             // to be hidden under the tooltip. (Only needed for serverside errors)
-            $Element.unbind('keyup.Validate').bind('keyup.Validate', function () {
+            $Element.off('keyup.Validate').on('keyup.Validate', function () {
                var Value = $Element.val();
                if ($Element.hasClass('ServerError') && Value.length) {
                    $('#OTRS_UI_Tooltips_ErrorTooltip').hide();
@@ -307,9 +308,10 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
                         // reset customer info table
                         $('#CustomerInfo .Content').html(BackupData.CustomerInfo);
 
-                        if (Core.Config.Get('Action') === 'AgentTicketProcess'){
+                        if (Core.Config.Get('Action') === 'AgentTicketProcess' &&
+                            typeof Core.Config.Get('CustomerFieldsToUpdate') !== 'undefined'){
                             // update services (trigger ServiceID change event)
-                            Core.AJAX.FormUpdate($('#CustomerID').closest('form'), 'AJAXUpdate', 'ServiceID', Core.Config.Get('ProcessManagement.UpdatableFields'));
+                            Core.AJAX.FormUpdate($('#CustomerID').closest('form'), 'AJAXUpdate', 'ServiceID', Core.Config.Get('CustomerFieldsToUpdate'));
                         }
                     }
                 });
@@ -324,7 +326,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
         // stays in the field and invokes an ajax request otherwise. We need to use beforeunload
         // here instead of unload because the URL of the window does not change on reload which
         // doesn't trigger pagehide.
-        $(window).bind('beforeunload.CustomerSearch', function () {
+        $(window).on('beforeunload.CustomerSearch', function () {
             $('#SelectedCustomerUser').val('');
             return; // return nothing to suppress the confirmation message
         });
@@ -407,7 +409,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
                 $(this).val(CustomerTicketCounter);
 
                 // bind change function to radio button to select customer
-                $(this).bind('change', function () {
+                $(this).on('change', function () {
                     // remove row
                     if ($(this).prop('checked')){
                         TargetNS.ReloadCustomerInfo(CustomerKey);
@@ -425,7 +427,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
             if($(this).hasClass('RemoveButton')) {
 
                 // bind click function to remove button
-                $(this).bind('click', function () {
+                $(this).on('click', function () {
                     // remove row
                     TargetNS.RemoveCustomerTicket($(this));
                     return false;
@@ -563,7 +565,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
         $('.CustomerAutoComplete').each(function() {
             var ObjectId = $(this).attr('id');
 
-            $('#' + ObjectId).bind('change', function () {
+            $('#' + ObjectId).on('change', function () {
 
                 if (!$('#' + ObjectId).val() || $('#' + ObjectId).val() === '') {
                     return false;
@@ -618,7 +620,7 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
                 return false;
             });
 
-            $('#' + ObjectId).bind('keypress', function (e) {
+            $('#' + ObjectId).on('keypress', function (e) {
                 if (e.which === 13){
                     Core.Agent.CustomerSearch.AddTicketCustomer(ObjectId, $('#' + ObjectId).val());
                     return false;
@@ -637,8 +639,8 @@ Core.Agent.CustomerSearch = (function (TargetNS) {
      */
     TargetNS.ShowDuplicatedDialog = function(Field){
         Core.UI.Dialog.ShowAlert(
-            Core.Config.Get('Duplicated.TitleText'),
-            Core.Config.Get('Duplicated.ContentText') + ' ' + Core.Config.Get('Duplicated.RemoveText'),
+            Core.Language.Translate('Duplicated entry'),
+            Core.Language.Translate('This address already exists on the address list.') + ' ' + Core.Language.Translate('It is going to be deleted from the field, please try again.'),
             function () {
                 Core.UI.Dialog.CloseDialog($('.Alert'));
                 $('#' + Field).val('');

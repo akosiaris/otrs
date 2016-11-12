@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -27,22 +27,16 @@ our @ObjectDependencies = (
 
 Kernel::System::SystemMaintenance.pm
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 SystemMaintenance backend
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create a SystemMaintenance object. Do not use it directly, instead use:
 
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $SystemMaintenanceObject = $Kernel::OM->Get('Kernel::System::SystemMaintenance');
 
 =cut
@@ -57,7 +51,7 @@ sub new {
     return $Self;
 }
 
-=item SystemMaintenanceAdd()
+=head2 SystemMaintenanceAdd()
 
 add new SystemMaintenance
 
@@ -134,7 +128,7 @@ sub SystemMaintenanceAdd {
     return $ID;
 }
 
-=item SystemMaintenanceDelete()
+=head2 SystemMaintenanceDelete()
 
 delete an SystemMaintenance
 
@@ -181,7 +175,7 @@ sub SystemMaintenanceDelete {
     return 1;
 }
 
-=item SystemMaintenanceGet()
+=head2 SystemMaintenanceGet()
 
 get SystemMaintenance attributes
 
@@ -265,7 +259,7 @@ sub SystemMaintenanceGet {
     return \%Data;
 }
 
-=item SystemMaintenanceUpdate()
+=head2 SystemMaintenanceUpdate()
 
 update SystemMaintenance attributes
 
@@ -322,7 +316,7 @@ sub SystemMaintenanceUpdate {
     return 1;
 }
 
-=item SystemMaintenanceList()
+=head2 SystemMaintenanceList()
 
 get an SystemMaintenance list
 
@@ -386,7 +380,7 @@ sub SystemMaintenanceList {
     return \%Data;
 }
 
-=item SystemMaintenanceListGet()
+=head2 SystemMaintenanceListGet()
 
 get an SystemMaintenance list with all SystemMaintenance details
 
@@ -457,7 +451,7 @@ sub SystemMaintenanceListGet {
     return \@Data;
 }
 
-=item SystemMaintenanceIsActive()
+=head2 SystemMaintenanceIsActive()
 
 get a SystemMaintenance active flag
 
@@ -506,7 +500,7 @@ sub SystemMaintenanceIsActive {
     return $Result;
 }
 
-=item SystemMaintenanceIsComming()
+=head2 SystemMaintenanceIsComming()
 
 get a SystemMaintenance flag
 
@@ -560,8 +554,6 @@ sub SystemMaintenanceIsComming {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

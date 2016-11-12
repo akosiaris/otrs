@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 use Mail::Address;
 
 our $ObjectManagerDisabled = 1;
@@ -344,8 +345,8 @@ sub Form {
     if ( !$Self->{TicketID} ) {
 
         return $LayoutObject->ErrorScreen(
-            Message => "Got no TicketID!",
-            Comment => 'System Error!',
+            Message => Translatable('Got no TicketID!'),
+            Comment => Translatable('System Error!'),
         );
     }
 
@@ -422,9 +423,8 @@ sub Form {
                     BodyClass => 'Popup',
                 );
                 $Output .= $LayoutObject->Warning(
-                    Message => $LayoutObject->{LanguageObject}
-                        ->Get('Sorry, you need to be the ticket owner to perform this action.'),
-                    Comment => $LayoutObject->{LanguageObject}->Get('Please change the owner first.'),
+                    Message => Translatable('Sorry, you need to be the ticket owner to perform this action.'),
+                    Comment => Translatable('Please change the owner first.'),
                 );
                 $Output .= $LayoutObject->Footer(
                     Type => 'Small',
@@ -465,7 +465,8 @@ sub Form {
         if ( $Data{TicketID} ne $Self->{TicketID} ) {
 
             return $LayoutObject->ErrorScreen(
-                Message => "Article does not belong to ticket $Self->{TicketID}!",
+                Message => $LayoutObject->{LanguageObject}
+                    ->Translate( 'Article does not belong to ticket %s!', $Self->{TicketID} ),
             );
         }
     }
@@ -587,8 +588,15 @@ sub Form {
             );
 
             # get params
-            for my $Param ( $Object->Option( %Data, %GetParam, Config => $Jobs{$Job} ) ) {
-                $GetParam{$Param} = $ParamObject->GetParam( Param => $Param );
+            PARAMETER:
+            for my $Parameter ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
+
+                if ( $Jobs{$Job}->{ParamType} && $Jobs{$Job}->{ParamType} ne 'Single' ) {
+                    @{ $GetParam{$Parameter} } = $ParamObject->GetArray( Param => $Parameter );
+                    next PARAMETER;
+                }
+
+                $GetParam{$Parameter} = $ParamObject->GetParam( Param => $Parameter );
             }
 
             # run module
@@ -766,7 +774,7 @@ sub SendEmail {
     for my $DynamicFieldConfig ( @{$DynamicField} ) {
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         $DynamicFieldValues{ $DynamicFieldConfig->{Name} } =
             $DynamicFieldBackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
@@ -909,8 +917,9 @@ sub SendEmail {
 
             return $LayoutObject->ErrorScreen(
                 Message =>
-                    "Could not perform validation on field $DynamicFieldConfig->{Label}!",
-                Comment => 'Please contact the admin.',
+                    $LayoutObject->{LanguageObject}
+                    ->Translate( 'Could not perform validation on field %s!', $DynamicFieldConfig->{Label} ),
+                Comment => Translatable('Please contact the administrator.'),
             );
         }
 
@@ -959,13 +968,13 @@ sub SendEmail {
         for my $Email ( Mail::Address->parse( $GetParam{$Line} ) ) {
             if ( !$CheckItemObject->CheckEmail( Address => $Email->address() ) ) {
                 $Error{ $Line . 'ErrorType' } = $Line . $CheckItemObject->CheckErrorType() . 'ServerErrorMsg';
-                $Error{ "$Line" . "Invalid" } = 'ServerError';
+                $Error{ $Line . 'Invalid' }   = 'ServerError';
             }
             my $IsLocal = $Kernel::OM->Get('Kernel::System::SystemAddress')->SystemAddressIsLocalAddress(
                 Address => $Email->address()
             );
             if ($IsLocal) {
-                $Error{ "$Line" . "Invalid" } = 'ServerError';
+                $Error{ $Line . 'IsLocalAddress' } = 'ServerError';
             }
         }
     }
@@ -986,18 +995,50 @@ sub SendEmail {
                 Debug => $Self->{Debug},
             );
 
+            my $Multiple;
+
             # get params
-            for my $Param ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
-                $GetParam{$Param} = $ParamObject->GetParam( Param => $Param );
+            PARAMETER:
+            for my $Parameter ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
+                if ( $Jobs{$Job}->{ParamType} && $Jobs{$Job}->{ParamType} ne 'Single' ) {
+                    @{ $GetParam{$Parameter} } = $ParamObject->GetArray( Param => $Parameter );
+                    $Multiple = 1;
+                    next PARAMETER;
+                }
+
+                $GetParam{$Parameter} = $ParamObject->GetParam( Param => $Parameter );
             }
 
             # run module
-            $Object->Run( %GetParam, Config => $Jobs{$Job} );
+            $Object->Run(
+                %GetParam,
+                StoreNew => 1,
+                Config   => $Jobs{$Job}
+            );
+
+            # get options that have been removed from the selection
+            # and add them back to the selection so that the submit
+            # will contain options that were hidden from the agent
+            my $Key = $Object->Option( %GetParam, Config => $Jobs{$Job} );
+
+            if ( $Object->can('GetOptionsToRemoveAJAX') ) {
+                my @RemovedOptions = $Object->GetOptionsToRemoveAJAX(%GetParam);
+                if (@RemovedOptions) {
+                    if ($Multiple) {
+                        for my $RemovedOption (@RemovedOptions) {
+                            push @{ $GetParam{$Key} }, $RemovedOption;
+                        }
+                    }
+                    else {
+                        $GetParam{$Key} = shift @RemovedOptions;
+                    }
+                }
+            }
 
             # ticket params
             %ArticleParam = (
                 %ArticleParam,
-                $Object->ArticleOption( %GetParam, Config => $Jobs{$Job} ),
+                $Object->ArticleOption( %GetParam, %ArticleParam, Config => $Jobs{$Job} ),
             );
 
             # get errors
@@ -1173,7 +1214,7 @@ sub SendEmail {
     if ( !$ArticleID ) {
 
         return $LayoutObject->ErrorScreen(
-            Comment => 'Please contact the admin.',
+            Comment => Translatable('Please contact the administrator.'),
         );
     }
 
@@ -1288,24 +1329,50 @@ sub AjaxUpdate {
                 Debug => $Self->{Debug},
             );
 
+            my $Multiple;
+
             # get params
+            PARAMETER:
             for my $Parameter ( $Object->Option( %GetParam, Config => $Jobs{$Job} ) ) {
+                if ( $Jobs{$Job}->{ParamType} && $Jobs{$Job}->{ParamType} ne 'Single' ) {
+                    @{ $GetParam{$Parameter} } = $ParamObject->GetArray( Param => $Parameter );
+                    $Multiple = 1;
+                    next PARAMETER;
+                }
+
                 $GetParam{$Parameter} = $ParamObject->GetParam( Param => $Parameter );
             }
 
             # run module
             my %Data = $Object->Data( %GetParam, Config => $Jobs{$Job} );
 
+            # get AJAX param values
+            if ( $Object->can('GetParamAJAX') ) {
+                %GetParam = ( %GetParam, $Object->GetParamAJAX(%GetParam) )
+            }
+
+            # get options that have to be removed from the selection visible
+            # to the agent. These options will be added again on submit.
+            if ( $Object->can('GetOptionsToRemoveAJAX') ) {
+                my @OptionsToRemove = $Object->GetOptionsToRemoveAJAX(%GetParam);
+
+                for my $OptionToRemove (@OptionsToRemove) {
+                    delete $Data{$OptionToRemove};
+                }
+            }
+
             my $Key = $Object->Option( %GetParam, Config => $Jobs{$Job} );
             if ($Key) {
                 push(
                     @ExtendedData,
                     {
-                        Name        => $Key,
-                        Data        => \%Data,
-                        SelectedID  => $GetParam{$Key},
-                        Translation => 1,
-                        Max         => 100,
+                        Name         => $Key,
+                        Data         => \%Data,
+                        SelectedID   => $GetParam{$Key},
+                        Translation  => 1,
+                        PossibleNone => 1,
+                        Multiple     => $Multiple,
+                        Max          => 100,
                     }
                 );
             }
@@ -1333,7 +1400,7 @@ sub AjaxUpdate {
     for my $DynamicFieldConfig ( @{$DynamicField} ) {
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         $DynamicFieldValues{ $DynamicFieldConfig->{Name} } =
             $DynamicFieldBackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
@@ -1465,13 +1532,6 @@ sub _Mask {
         OnlyDynamicFields => 1
     );
 
-    # create a string with the quoted dynamic field names separated by commas
-    if ( IsArrayRefWithData($DynamicFieldNames) ) {
-        for my $Field ( @{$DynamicFieldNames} ) {
-            $Param{DynamicFieldNamesStrg} .= ", '" . $Field . "'";
-        }
-    }
-
     # get config object
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
@@ -1523,11 +1583,6 @@ sub _Mask {
             Class         => 'Modernize',
         );
     }
-
-    # build customer search autocomplete field
-    $LayoutObject->Block(
-        Name => 'CustomerSearchAutoComplete',
-    );
 
     # prepare errors!
     if ( $Param{Errors} ) {
@@ -1654,15 +1709,36 @@ sub _Mask {
         );
     }
 
+    if ( $Param{ToIsLocalAddress} && $Param{Errors} && !$Param{Errors}->{ToErrorType} ) {
+        $LayoutObject->Block(
+            Name => 'ToIsLocalAddressServerErrorMsg',
+            Data => \%Param,
+        );
+    }
+
     if ( $Param{CcInvalid} && $Param{Errors} && !$Param{Errors}->{CcErrorType} ) {
         $LayoutObject->Block(
             Name => 'CcServerErrorMsg',
         );
     }
 
+    if ( $Param{CcIsLocalAddress} && $Param{Errors} && !$Param{Errors}->{CcErrorType} ) {
+        $LayoutObject->Block(
+            Name => 'CcIsLocalAddressServerErrorMsg',
+            Data => \%Param,
+        );
+    }
+
     if ( $Param{BccInvalid} && $Param{Errors} && !$Param{Errors}->{BccErrorType} ) {
         $LayoutObject->Block(
             Name => 'BccServerErrorMsg',
+        );
+    }
+
+    if ( $Param{BccIsLocalAddress} && $Param{Errors} && !$Param{Errors}->{BccErrorType} ) {
+        $LayoutObject->Block(
+            Name => 'BccIsLocalAddressServerErrorMsg',
+            Data => \%Param,
         );
     }
 
@@ -1828,11 +1904,16 @@ sub _Mask {
         $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
         $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-        $LayoutObject->Block(
-            Name => 'RichText',
+        # set up rich text editor
+        $LayoutObject->SetRichTextParameters(
             Data => \%Param,
         );
     }
+
+    $LayoutObject->AddJSData(
+        Key   => 'DynamicFieldNames',
+        Value => $DynamicFieldNames,
+    );
 
     # create & return output
     return $LayoutObject->Output(

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -24,22 +24,16 @@ our @ObjectDependencies = (
 
 Kernel::System::Priority - priority lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All ticket priority functions.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create an object
 
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $PriorityObject = $Kernel::OM->Get('Kernel::System::Priority');
 
 
@@ -58,7 +52,7 @@ sub new {
     return $Self;
 }
 
-=item PriorityList()
+=head2 PriorityList()
 
 return a priority list as hash
 
@@ -120,7 +114,7 @@ sub PriorityList {
     return %Data;
 }
 
-=item PriorityGet()
+=head2 PriorityGet()
 
 get a priority
 
@@ -185,7 +179,7 @@ sub PriorityGet {
     return %Data;
 }
 
-=item PriorityAdd()
+=head2 PriorityAdd()
 
 add a ticket priority
 
@@ -245,7 +239,7 @@ sub PriorityAdd {
     return $ID;
 }
 
-=item PriorityUpdate()
+=head2 PriorityUpdate()
 
 update a existing ticket priority
 
@@ -300,7 +294,7 @@ sub PriorityUpdate {
     $Kernel::OM->Get('Kernel::System::SysConfig')->ConfigItemCheckAll();
 }
 
-=item PriorityLookup()
+=head2 PriorityLookup()
 
 returns the id or the name of a priority
 
@@ -359,8 +353,6 @@ sub PriorityLookup {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

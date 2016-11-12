@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -17,6 +17,7 @@ use File::Temp();
 
 use Kernel::Config;
 use Kernel::System::User;
+use Kernel::System::UnitTest::Helper;
 
 our @ObjectDependencies = (
     'Kernel::Config',
@@ -39,11 +40,7 @@ In case of an error, an exception will be thrown that you can catch in your
 unit test file and handle with C<HandleError()> in this class. It will output
 a failing test result and generate a screenshot for analysis.
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create a selenium object to run fontend tests.
 
@@ -88,41 +85,31 @@ sub new {
     $Kernel::OM->Get('Kernel::System::Main')->RequireBaseClass('Selenium::Remote::Driver')
         || die "Could not load Selenium::Remote::Driver";
 
-    my $Self = $Class->SUPER::new(%SeleniumTestsConfig);
+    $Kernel::OM->Get('Kernel::System::Main')->Require('Kernel::System::UnitTest::Selenium::WebElement')
+        || die "Could not load Kernel::System::UnitTest::Selenium::WebElement";
+
+    my $Self = $Class->SUPER::new(
+        webelement_class => 'Kernel::System::UnitTest::Selenium::WebElement',
+        %SeleniumTestsConfig
+    );
     $Self->{UnitTestObject}      = $Param{UnitTestObject};
     $Self->{SeleniumTestsActive} = 1;
 
     #$Self->debug_on();
 
     # set screen size from config or use defauls
-    my $Height = $SeleniumTestsConfig{window_height} || 1000;
-    my $Width  = $SeleniumTestsConfig{window_width}  || 1200;
+    my $Height = $SeleniumTestsConfig{window_height} || 1200;
+    my $Width  = $SeleniumTestsConfig{window_width}  || 1400;
+
     $Self->set_window_size( $Height, $Width );
 
-    # get remote host with some precautions for certain unit test systems
-    my $FQDN = $Kernel::OM->Get('Kernel::Config')->Get('FQDN');
-
-    # try to resolve fqdn host
-    if ( $FQDN ne 'yourhost.example.com' && gethostbyname($FQDN) ) {
-        $Self->{BaseURL} = $FQDN;
-    }
-
-    # try to resolve localhost instead
-    if ( !$Self->{BaseURL} && gethostbyname('localhost') ) {
-        $Self->{BaseURL} = 'localhost';
-    }
-
-    # use hardcoded localhost ip address
-    if ( !$Self->{BaseURL} ) {
-        $Self->{BaseURL} = '127.0.0.1';
-    }
-
-    $Self->{BaseURL} = $Kernel::OM->Get('Kernel::Config')->Get('HttpType') . '://' . $Self->{BaseURL};
+    $Self->{BaseURL} = $Kernel::OM->Get('Kernel::Config')->Get('HttpType') . '://';
+    $Self->{BaseURL} .= Kernel::System::UnitTest::Helper->GetTestHTTPHostname();
 
     return $Self;
 }
 
-=item RunTest()
+=head2 RunTest()
 
 runs a selenium test if Selenium testing is configured and performs proper
 error handling (calls C<HandleError()> if needed).
@@ -147,12 +134,16 @@ sub RunTest {
     return 1;
 }
 
-=item _execute_command()
+=begin Internal:
+
+=head2 _execute_command()
 
 Override internal command of base class.
 
 We use it to output successful command runs to the UnitTest object.
 Errors will cause an exeption and be caught elsewhere.
+
+=end Internal:
 
 =cut
 
@@ -169,17 +160,23 @@ sub _execute_command {    ## no critic
         }
     );
 
-    $Self->{UnitTestObject}->True(
-        1,
-        $TestName
-    );
+    if ( $Self->{SuppressCommandRecording} ) {
+        print $TestName;
+    }
+    else {
+        $Self->{UnitTestObject}->True( 1, $TestName );
+    }
 
     return $Result;
 }
 
-=item get()
+=head2 get()
 
 Override get method of base class to prepend the correct base URL.
+
+    $SeleniumObject->get(
+        $URL,
+    );
 
 =cut
 
@@ -195,7 +192,53 @@ sub get {    ## no critic
     return;
 }
 
-=item Login()
+=head2 VerifiedGet()
+
+perform a get() call, but wait for the page to be fully loaded (works only within OTRS).
+Will die() if the verification fails.
+
+    $SeleniumObject->VerifiedGet(
+        $URL,
+    );
+
+=cut
+
+sub VerifiedGet {
+    my ( $Self, $URL ) = @_;
+
+    $Self->get($URL);
+
+    $Self->WaitFor(
+        JavaScript =>
+            'return typeof(Core) == "object" && typeof(Core.App) == "object" && Core.App.PageLoadComplete'
+    ) || die "OTRS API verification failed after page load.";
+
+    return;
+}
+
+=head2 VerifiedRefresh()
+
+perform a refresh() call, but wait for the page to be fully loaded (works only within OTRS).
+Will die() if the verification fails.
+
+    $SeleniumObject->VerifiedRefresh();
+
+=cut
+
+sub VerifiedRefresh {
+    my ( $Self, $URL ) = @_;
+
+    $Self->refresh();
+
+    $Self->WaitFor(
+        JavaScript =>
+            'return typeof(Core) == "object" && typeof(Core.App) == "object" && Core.App.PageLoadComplete'
+    ) || die "OTRS API verification failed after page load.";
+
+    return;
+}
+
+=head2 Login()
 
 login to agent or customer interface
 
@@ -223,63 +266,66 @@ sub Login {
 
     $Self->{UnitTestObject}->True( 1, 'Initiating login...' );
 
-    eval {
-        $Self->delete_all_cookies();
+    # we will try several times to log in
+    my $MaxTries = 5;
 
-        my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
+    TRY:
+    for my $Try ( 1 .. $MaxTries ) {
 
-        if ( $Param{Type} eq 'Agent' ) {
-            $ScriptAlias .= 'index.pl';
+        eval {
+            my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
+
+            if ( $Param{Type} eq 'Agent' ) {
+                $ScriptAlias .= 'index.pl';
+            }
+            else {
+                $ScriptAlias .= 'customer.pl';
+            }
+
+            $Self->get("${ScriptAlias}");
+
+            $Self->delete_all_cookies();
+            $Self->VerifiedGet("${ScriptAlias}?Action=Login;User=$Param{User};Password=$Param{Password}");
+
+            # login successful?
+            $Self->find_element( 'a#LogoutButton', 'css' );    # dies if not found
+
+            $Self->{UnitTestObject}->True( 1, 'Login sequence ended...' );
+        };
+
+        # an error happend
+        if ($@) {
+
+            $Self->{UnitTestObject}->True( 1, "Login attempt $Try of $MaxTries not successful." );
+
+            # try again
+            next TRY if $Try < $MaxTries;
+
+            # log error
+            $Self->HandleError($@);
+            die "Login failed!";
         }
+
+        # login was sucessful
         else {
-            $ScriptAlias .= 'customer.pl';
+            last TRY;
         }
-
-        # First load the page so we can delete any pre-existing cookies
-        $Self->get("${ScriptAlias}");
-        $Self->delete_all_cookies();
-
-        # Now load it again to login
-        $Self->get("${ScriptAlias}");
-
-        my $Element = $Self->find_element( 'input#User', 'css' );
-        $Element->is_displayed();
-        $Element->is_enabled();
-        $Element->send_keys( $Param{User} );
-
-        $Element = $Self->find_element( 'input#Password', 'css' );
-        $Element->is_displayed();
-        $Element->is_enabled();
-        $Element->send_keys( $Param{Password} );
-
-        # login
-        $Element->submit();
-
-        # Wait until form has loaded, if neccessary
-        $Self->WaitFor( JavaScript => 'return typeof($) === "function" && $("a#LogoutButton").length' );
-
-        # login succressful?
-        $Element = $Self->find_element( 'a#LogoutButton', 'css' );
-
-        $Self->{UnitTestObject}->True( 1, 'Login sequence ended...' );
-    };
-    if ($@) {
-        $Self->HandleError($@);
-        die "Login failed!";
     }
 
     return 1;
 }
 
-=item WaitFor()
+=head2 WaitFor()
 
 wait with increasing sleep intervals until the given condition is true or the wait time is over.
 Exactly one condition (JavaScript or WindowCount) must be specified.
 
-    $SeleniumObject->WaitFor(
-        JavaScript  => 'return $(".someclass").length',   # Javascript code that checks condition
-        WindowCount => 2,                                 # Wait until this many windows are open
-        Time        => 20,                                # optional, wait time in seconds (default 20)
+    my $Success = $SeleniumObject->WaitFor(
+        JavaScript   => 'return $(".someclass").length',   # Javascript code that checks condition
+        AlertPresent => 1,                                 # Wait until an alert, confirm or prompt dialog is present
+        WindowCount  => 2,                                 # Wait until this many windows are open
+        Callback     => sub { ... }                        # Wait until function returns true
+        Time         => 20,                                # optional, wait time in seconds (default 20)
     );
 
 =cut
@@ -287,29 +333,110 @@ Exactly one condition (JavaScript or WindowCount) must be specified.
 sub WaitFor {
     my ( $Self, %Param ) = @_;
 
-    if ( !$Param{JavaScript} && !$Param{WindowCount} ) {
-        die "Need JavaScript.";
+    if ( !$Param{JavaScript} && !$Param{WindowCount} && !$Param{AlertPresent} && !$Param{Callback} ) {
+        die "Need JavaScript, WindowCount or AlertPresent.";
     }
+
+    local $Self->{SuppressCommandRecording} = 1;
 
     $Param{Time} //= 20;
     my $WaitedSeconds = 0;
     my $Interval      = 0.1;
 
-    while ( $WaitedSeconds < $Param{Time} ) {
+    while ( $WaitedSeconds <= $Param{Time} ) {
         if ( $Param{JavaScript} ) {
-            return if $Self->execute_script( $Param{JavaScript} )
+            return 1 if $Self->execute_script( $Param{JavaScript} )
         }
         elsif ( $Param{WindowCount} ) {
-            return if scalar( @{ $Self->get_window_handles() } ) == $Param{WindowCount};
+            return 1 if scalar( @{ $Self->get_window_handles() } ) == $Param{WindowCount};
+        }
+        elsif ( $Param{AlertPresent} ) {
+
+            # Eval is needed because the method would throw if no alert is present (yet).
+            return 1 if eval { $Self->get_alert_text() };
+        }
+        elsif ( $Param{Callback} ) {
+            return 1 if $Param{Callback}->();
         }
         sleep $Interval;
         $WaitedSeconds += $Interval;
         $Interval += 0.1;
     }
+
+    my $Argument = '';
+    for my $Key (qw(JavaScript WindowCount AlertPresent)) {
+        $Argument = "$Key => $Param{$Key}" if $Param{$Key};
+    }
+    $Argument = "Callback" if $Param{Callback};
+
+    die "WaitFor($Argument) failed.";
+}
+
+=head2 DragAndDrop()
+
+Drag and drop an element.
+
+    $SeleniumObject->DragAndDrop(
+        Element         => '.Element', # (required) css selector of element which should be dragged
+        Target          => '.Target',  # (required) css selector of element on which the dragged element should be dropped
+        TargetOffset    => {           # (optional) Offset for target. If not specified, the mouse will move to the middle of the element.
+            X   => 150,
+            Y   => 100,
+        }
+    );
+
+=cut
+
+sub DragAndDrop {
+
+    my ( $Self, %Param ) = @_;
+
+    # Value is optional parameter
+    for my $Needed (qw(Element Target)) {
+        if ( !$Param{$Needed} ) {
+            die "Need $Needed";
+        }
+    }
+
+    my %TargetOffset;
+    if ( $Param{TargetOffset} ) {
+        %TargetOffset = (
+            xoffset => $Param{TargetOffset}->{X} || 0,
+            yoffset => $Param{TargetOffset}->{Y} || 0,
+        );
+    }
+
+    # Make sure Element is visible
+    $Self->WaitFor(
+        JavaScript => 'return typeof($) === "function" && $(\'' . $Param{Element} . ':visible\').length;',
+    );
+    my $Element = $Self->find_element( $Param{Element}, 'css' );
+
+    # Move mouse to from element, drag and drop
+    $Self->mouse_move_to_location( element => $Element );
+
+    # Holds the mouse button on the element
+    $Self->button_down();
+
+    # Make sure Target is visible
+    $Self->WaitFor(
+        JavaScript => 'return typeof($) === "function" && $(\'' . $Param{Target} . ':visible\').length;',
+    );
+    my $Target = $Self->find_element( $Param{Target}, 'css' );
+
+    # Move mouse to the destination
+    $Self->mouse_move_to_location(
+        element => $Target,
+        %TargetOffset,
+    );
+
+    # Release
+    $Self->button_up();
+
     return;
 }
 
-=item HandleError()
+=head2 HandleError()
 
 use this method to handle any Selenium exceptions.
 
@@ -355,7 +482,7 @@ sub HandleError {
     );
 }
 
-=item DESTROY()
+=head2 DESTROY()
 
 cleanup. Adds a unit test result to indicate the shutdown.
 
@@ -375,8 +502,6 @@ sub DESTROY {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

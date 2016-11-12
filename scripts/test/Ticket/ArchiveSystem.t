@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -14,6 +14,14 @@ use vars (qw($Self));
 
 # get config object
 my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
 $ConfigObject->Set(
     Key   => 'Ticket::ArchiveSystem',
@@ -219,8 +227,6 @@ for my $Test (@Tests) {
         "$Test->{Name} - TicketWatchGet()",
     );
 
-=cut
-
     # article flag tests
     my @Tests = (
         {
@@ -373,13 +379,8 @@ for my $Test (@Tests) {
         );
     }
 
-=cut
-
-    # the ticket is no longer needed
-    $TicketObject->TicketDelete(
-        TicketID => $TicketID,
-        UserID   => 1,
-    );
 }
+
+# cleanup is done by RestoreDatabase.
 
 1;

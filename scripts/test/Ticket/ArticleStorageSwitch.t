@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -23,6 +23,15 @@ for my $SourceBackend (qw(ArticleStorageDB ArticleStorageFS)) {
     # get needed objects
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
     my $MainObject   = $Kernel::OM->Get('Kernel::System::Main');
+
+    # get helper object
+    $Kernel::OM->ObjectParamAdd(
+        'Kernel::System::UnitTest::Helper' => {
+            RestoreDatabase  => 1,
+            UseTmpArticleDir => 1,
+        },
+    );
+    my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
     $ConfigObject->Set(
         Key   => 'Ticket::StorageModule',
@@ -167,18 +176,8 @@ for my $SourceBackend (qw(ArticleStorageDB ArticleStorageFS)) {
             }
         }
     }
-
-    # cleanup
-    for my $TicketID (@TicketIDs) {
-        my $Delete = $TicketObject->TicketDelete(
-            UserID   => 1,
-            TicketID => $TicketID,
-        );
-        $Self->True(
-            $Delete,
-            "$NamePrefix - TicketDelete()",
-        );
-    }
 }
+
+# cleanup is done by RestoreDatabase.
 
 1;

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -27,28 +27,24 @@ our @ObjectDependencies = (
     'Kernel::System::State',
     'Kernel::System::Ticket',
     'Kernel::System::Time',
+    'Kernel::System::TemplateGenerator',
+    'Kernel::System::CustomerUser',
 );
 
 =head1 NAME
 
 Kernel::System::GenericAgent - to manage the generic agent jobs
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All functions to manage the generic agent and the generic agent jobs.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $GenericAgentObject = $Kernel::OM->Get('Kernel::System::GenericAgent');
 
 =cut
@@ -164,7 +160,7 @@ sub new {
     return $Self;
 }
 
-=item JobRun()
+=head2 JobRun()
 
 run a generic agent job
 
@@ -285,16 +281,13 @@ sub JobRun {
         PREFERENCE:
         for my $Preference ( @{$SearchFieldPreferences} ) {
 
-            if (
-                !$DynamicFieldSearchTemplate{
-                    'Search_DynamicField_'
-                        . $DynamicFieldConfig->{Name}
-                        . $Preference->{Type}
-                }
-                )
-            {
-                next PREFERENCE;
-            }
+            my $DynamicFieldTemp = $DynamicFieldSearchTemplate{
+                'Search_DynamicField_'
+                    . $DynamicFieldConfig->{Name}
+                    . $Preference->{Type}
+            };
+
+            next PREFERENCE if !defined $DynamicFieldTemp;
 
             # extract the dynamic field value from the profile
             my $SearchParameter = $DynamicFieldBackendObject->SearchFieldParameterBuild(
@@ -315,14 +308,15 @@ sub JobRun {
         $Job{TicketID} = $Param{OnlyTicketID};
     }
 
-    # get ticket object
+    # get needed objects
     my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
     # escalation tickets
     my %Tickets;
 
     # get ticket limit on job run
-    my $RunLimit = $Kernel::OM->Get('Kernel::Config')->Get('Ticket::GenericAgentRunLimit');
+    my $RunLimit = $ConfigObject->Get('Ticket::GenericAgentRunLimit');
     if ( $Job{Escalation} ) {
 
         # Find all tickets which will escalate within the next five days.
@@ -330,7 +324,7 @@ sub JobRun {
         my @Tickets = $TicketObject->TicketSearch(
             %Job,
             Result                           => 'ARRAY',
-            Limit                            => $Job{Limit} || 100,
+            Limit                            => $Job{Limit} || $Param{Limit} || 100,
             TicketEscalationTimeOlderMinutes => $Job{TicketEscalationTimeOlderMinutes}
                 || -( 5 * 24 * 60 ),
             Permission => 'rw',
@@ -450,10 +444,11 @@ sub JobRun {
             if ( $Self->{NoticeSTDOUT} ) {
                 print " For all Queues: \n";
             }
+            my $GenericAgentTicketSearch = $ConfigObject->Get("Ticket::GenericAgentTicketSearch") || {};
             %Tickets = $TicketObject->TicketSearch(
                 %Job,
                 %DynamicFieldSearchParameters,
-                ConditionInline => 1,
+                ConditionInline => $GenericAgentTicketSearch->{ExtendedSearchCondition},
                 Limit           => $Param{Limit} || $RunLimit,
                 UserID          => $Param{UserID},
             );
@@ -508,7 +503,7 @@ sub JobRun {
     return 1;
 }
 
-=item JobList()
+=head2 JobList()
 
 returns a hash of jobs
 
@@ -552,7 +547,7 @@ sub JobList {
     return %Data;
 }
 
-=item JobGet()
+=head2 JobGet()
 
 returns a hash of the job data
 
@@ -740,7 +735,7 @@ sub JobGet {
     return %Data;
 }
 
-=item JobAdd()
+=head2 JobAdd()
 
 adds a new job to the database
 
@@ -819,7 +814,7 @@ sub JobAdd {
     return 1;
 }
 
-=item JobDelete()
+=head2 JobDelete()
 
 deletes a job from the database
 
@@ -866,7 +861,7 @@ sub JobDelete {
     return 1;
 }
 
-=item JobEventList()
+=head2 JobEventList()
 
 returns a hash of events for each job
 
@@ -911,7 +906,7 @@ sub JobEventList {
 
 =cut
 
-=item _JobRunTicket()
+=head2 _JobRunTicket()
 
 run a generic agent job on a ticket
 
@@ -946,9 +941,7 @@ sub _JobRunTicket {
     my $Ticket = "($Param{TicketNumber}/$Param{TicketID})";
 
     # disable sending emails
-    if ( $Param{Config}->{New}->{SendNoNotification} ) {
-        $TicketObject->{SendNoNotification} = 1;
-    }
+    $TicketObject->{SendNoNotification} = $Param{Config}->{New}->{SendNoNotification} ? 1 : 0;
 
     # move ticket
     if ( $Param{Config}->{New}->{Queue} ) {
@@ -975,23 +968,65 @@ sub _JobRunTicket {
         );
     }
 
+    my $ContentType = 'text/plain';
+
     # add note if wanted
     if ( $Param{Config}->{New}->{Note}->{Body} || $Param{Config}->{New}->{NoteBody} ) {
         if ( $Self->{NoticeSTDOUT} ) {
             print "  - Add note to Ticket $Ticket\n";
         }
+
+        my %Ticket = $TicketObject->TicketGet(
+            TicketID      => $Param{TicketID},
+            DynamicFields => 0,
+        );
+
+        my %CustomerUserData;
+
+        # We can only do OTRS Tag replacement if we have a CustomerUserID (langauge settings...)
+        if ( IsHashRefWithData( \%Ticket ) && IsStringWithData( $Ticket{CustomerUserID} ) ) {
+            my %CustomerUserData = $Kernel::OM->Get('Kernel::System::CustomerUser')->CustomerUserDataGet(
+                User => $Ticket{CustomerUserID},
+            );
+
+            my %Notification = (
+                Subject     => $Param{Config}->{New}->{NoteSubject},
+                Body        => $Param{Config}->{New}->{NoteBody},
+                ContentType => 'text/plain',
+            );
+
+            my %GenericAgentArticle = $Kernel::OM->Get('Kernel::System::TemplateGenerator')->GenericAgentArticle(
+                TicketID     => $Param{TicketID},
+                Recipient    => \%CustomerUserData,    # Agent or Customer data get result
+                Notification => \%Notification,
+                UserID       => $Param{UserID},
+            );
+
+            if (
+                IsStringWithData( $GenericAgentArticle{Body} )
+                || IsHashRefWithData( $GenericAgentArticle{Subject} )
+                )
+            {
+                $Param{Config}->{New}->{Note}->{Subject} = $GenericAgentArticle{Subject} || '';
+                $Param{Config}->{New}->{Note}->{Body}    = $GenericAgentArticle{Body}    || '';
+                $ContentType                             = $GenericAgentArticle{ContentType};
+            }
+        }
+
         my $ArticleID = $TicketObject->ArticleCreate(
             TicketID    => $Param{TicketID},
-            ArticleType => $Param{Config}->{New}->{Note}->{ArticleType} || 'note-internal',
-            SenderType  => 'agent',
-            From        => $Param{Config}->{New}->{Note}->{From}
+            ArticleType => $Param{Config}->{New}->{Note}->{ArticleType}
+                || $Param{Config}->{New}->{ArticleType}
+                || 'note-internal',
+            SenderType => 'agent',
+            From       => $Param{Config}->{New}->{Note}->{From}
                 || $Param{Config}->{New}->{NoteFrom}
                 || 'GenericAgent',
             Subject => $Param{Config}->{New}->{Note}->{Subject}
                 || $Param{Config}->{New}->{NoteSubject}
                 || 'Note',
             Body => $Param{Config}->{New}->{Note}->{Body} || $Param{Config}->{New}->{NoteBody},
-            MimeType       => 'text/plain',
+            MimeType       => $ContentType,
             Charset        => 'utf-8',
             UserID         => $Param{UserID},
             HistoryType    => 'AddNote',
@@ -1042,6 +1077,22 @@ sub _JobRunTicket {
         );
 
         $IsPendingState = grep { $_ == $Param{Config}->{New}->{StateID} } keys %{ $Self->{PendingStateList} };
+    }
+
+    if (
+        $Param{Config}->{New}->{PendingTime}
+        && !$Param{Config}->{New}->{State}
+        && !$Param{Config}->{New}->{StateID}
+        )
+    {
+        # if pending time is provided, but there is no new ticket state provided,
+        # check if ticket is already in pending state
+        my %Ticket = $TicketObject->TicketGet(
+            TicketID      => $Param{TicketID},
+            DynamicFields => 0,
+        );
+
+        $IsPendingState = grep { $_ eq $Ticket{State} } values %{ $Self->{PendingStateList} };
     }
 
     # set pending time, if new state is pending state
@@ -1277,7 +1328,7 @@ sub _JobRunTicket {
 
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         my $Value = $DynamicFieldBackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
             Template           => $Param{Config}->{New},
@@ -1433,21 +1484,11 @@ sub _JobUpdateRunTime {
     # get database object
     my $DBObject = $Kernel::OM->Get('Kernel::System::DB');
 
-    # check if job name already exists
-    return if !$DBObject->Prepare(
-        SQL  => 'SELECT job_key, job_value FROM generic_agent_jobs WHERE job_name = ?',
-        Bind => [ \$Param{Name} ],
+    # delete old run times
+    return if !$DBObject->Do(
+        SQL  => 'DELETE FROM generic_agent_jobs WHERE job_name = ? AND job_key IN (?, ?)',
+        Bind => [ \$Param{Name}, \'ScheduleLastRun', \'ScheduleLastRunUnixTime' ],
     );
-    my @Data;
-    while ( my @Row = $DBObject->FetchrowArray() ) {
-        if ( $Row[0] =~ /^(ScheduleLastRun|ScheduleLastRunUnixTime)/ ) {
-            push @Data,
-                {
-                Key   => $Row[0],
-                Value => $Row[1]
-                };
-        }
-    }
 
     # get time object
     my $TimeObject = $Kernel::OM->Get('Kernel::System::Time');
@@ -1467,15 +1508,6 @@ sub _JobUpdateRunTime {
         );
     }
 
-    # remove old times
-    for my $Time (@Data) {
-        $DBObject->Do(
-            SQL => 'DELETE FROM generic_agent_jobs WHERE '
-                . 'job_name = ? AND job_key = ? AND job_value = ?',
-            Bind => [ \$Param{Name}, \$Time->{Key}, \$Time->{Value} ],
-        );
-    }
-
     $Kernel::OM->Get('Kernel::System::Cache')->Delete(
         Key  => 'JobGet::' . $Param{Name},
         Type => 'GenericAgent',
@@ -1487,8 +1519,6 @@ sub _JobUpdateRunTime {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

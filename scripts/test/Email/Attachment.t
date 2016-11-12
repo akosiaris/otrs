@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -35,8 +35,6 @@ use utf8;
 use vars (qw($Self));
 
 use Kernel::System::EmailParser;
-
-my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
 # Constants for test(s): 1 - enabled, 0 - disabled.
 # SEND - check sending body. PARSE - check parsed body.
@@ -75,7 +73,7 @@ my $AttachmentReference = [
 my $AttachmentNumber = scalar @{$AttachmentReference};
 
 # do not really send emails
-$ConfigObject->Set(
+$Kernel::OM->Get('Kernel::Config')->Set(
     Key   => 'SendmailModule',
     Value => 'Kernel::System::Email::DoNotSendEmail',
 );
@@ -89,7 +87,7 @@ my @Tests = (
             To         => 'john.smith2@example.com',
             Subject    => 'some subject',
             Body       => 'Some Body',
-            Type       => 'text/html',
+            MimeType   => 'text/html',
             Charset    => 'utf8',
             Attachment => [
                 {
@@ -134,7 +132,7 @@ my @Tests = (
             To         => 'john.smith2@example.com',
             Subject    => 'some subject',
             Body       => 'Some Body',
-            Type       => 'text/plain',
+            MimeType   => 'text/plain',
             Charset    => 'utf8',
             Attachment => [
                 {
@@ -180,7 +178,7 @@ my @Tests = (
             To         => 'john.smith2@example.com',
             Subject    => 'some subject',
             Body       => 'Some Body',
-            Type       => 'text/html',
+            MimeType   => 'text/html',
             Charset    => 'utf8',
             Attachment => $AttachmentReference,
             MimeType   => 'text/html',
@@ -201,7 +199,7 @@ my @Tests = (
             To         => 'john.smith2@example.com',
             Subject    => 'some subject',
             Body       => 'Some Body',
-            Type       => 'text/html',
+            MimeType   => 'text/html',
             Charset    => 'utf8',
             Attachment => $AttachmentReference,
             MimeType   => 'text/html',

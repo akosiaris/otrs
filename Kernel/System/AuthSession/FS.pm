@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,7 +11,9 @@ package Kernel::System::AuthSession::FS;
 use strict;
 use warnings;
 
-use Storable;
+use Storable qw();
+
+use Kernel::Language qw(Translatable);
 
 our @ObjectDependencies = (
     'Kernel::Config',
@@ -31,13 +33,13 @@ sub new {
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
     # get more common params
-    $Self->{SessionSpool}                = $ConfigObject->Get('SessionDir');
-    $Self->{SystemID}                    = $ConfigObject->Get('SystemID');
-    $Self->{AgentSessionLimit}           = $ConfigObject->Get('AgentSessionLimit');
-    $Self->{AgentSessionPerUserLimit}    = $ConfigObject->Get('AgentSessionPerUserLimit') || 2;
-    $Self->{CustomerSessionLimit}        = $ConfigObject->Get('CustomerSessionLimit');
-    $Self->{CustomerSessionPerUserLimit} = $ConfigObject->Get('CustomerSessionPerUserLimit');
-    $Self->{SessionActiveTime}           = $ConfigObject->Get('SessionActiveTime') || 60 * 10;
+    $Self->{SessionSpool}      = $ConfigObject->Get('SessionDir');
+    $Self->{SystemID}          = $ConfigObject->Get('SystemID');
+    $Self->{SessionActiveTime} = $ConfigObject->Get('SessionActiveTime') || 60 * 10;
+
+    if ( $Self->{SessionActiveTime} < 300 ) {
+        $Self->{SessionActiveTime} = 300;
+    }
 
     return $Self;
 }
@@ -56,13 +58,13 @@ sub CheckSessionID {
     my $RemoteAddr = $ENV{REMOTE_ADDR} || 'none';
 
     # set default message
-    $Self->{SessionIDErrorMessage} = 'Session invalid. Please log in again.';
+    $Self->{SessionIDErrorMessage} = Translatable('Session invalid. Please log in again.');
 
     # session id check
     my %Data = $Self->GetSessionIDData( SessionID => $Param{SessionID} );
 
     if ( !$Data{UserID} || !$Data{UserLogin} ) {
-        $Self->{SessionIDErrorMessage} = 'Session invalid. Please log in again.';
+        $Self->{SessionIDErrorMessage} = Translatable('Session invalid. Please log in again.');
         $Kernel::OM->Get('Kernel::System::Log')->Log(
             Priority => 'notice',
             Message  => "SessionID: '$Param{SessionID}' is invalid!!!",
@@ -100,7 +102,7 @@ sub CheckSessionID {
 
     if ( ( $TimeNow - $MaxSessionIdleTime ) >= $Data{UserLastRequest} ) {
 
-        $Self->{SessionIDErrorMessage} = 'Session has timed out. Please log in again.';
+        $Self->{SessionIDErrorMessage} = Translatable('Session has timed out. Please log in again.');
 
         my $Timeout = int( ( $TimeNow - $Data{UserLastRequest} ) / ( 60 * 60 ) );
 
@@ -123,7 +125,7 @@ sub CheckSessionID {
 
     if ( ( $TimeNow - $MaxSessionTime ) >= $Data{UserSessionStart} ) {
 
-        $Self->{SessionIDErrorMessage} = 'Session has timed out. Please log in again.';
+        $Self->{SessionIDErrorMessage} = Translatable('Session has timed out. Please log in again.');
 
         my $Timeout = int( ( $TimeNow - $Data{UserSessionStart} ) / ( 60 * 60 ) );
 
@@ -197,103 +199,11 @@ sub CreateSessionID {
     # get system time
     my $TimeNow = $Kernel::OM->Get('Kernel::System::Time')->SystemTime();
 
-    # get session limit config
-    my $SessionLimit;
-    if ( $Param{UserType} && $Param{UserType} eq 'User' && $Self->{AgentSessionLimit} ) {
-        $SessionLimit = $Self->{AgentSessionLimit};
-    }
-    elsif ( $Param{UserType} && $Param{UserType} eq 'Customer' && $Self->{CustomerSessionLimit} ) {
-        $SessionLimit = $Self->{CustomerSessionLimit};
-    }
-
-    # get session per user limit config
-    my $SessionPerUserLimit;
-    if ( $Param{UserType} && $Param{UserType} eq 'User' && $Self->{AgentSessionPerUserLimit} ) {
-        $SessionPerUserLimit = $Self->{AgentSessionPerUserLimit};
-    }
-    elsif (
-        $Param{UserType}
-        && $Param{UserType} eq 'Customer'
-        && $Self->{CustomerSessionPerUserLimit}
-        )
-    {
-        $SessionPerUserLimit = $Self->{CustomerSessionPerUserLimit};
-    }
-
-    # get main object
-    my $MainObject = $Kernel::OM->Get('Kernel::System::Main');
-
-    if ( $SessionLimit || $SessionPerUserLimit ) {
-
-        # read data
-        my @List = $MainObject->DirectoryRead(
-            Directory => $Self->{SessionSpool},
-            Filter    => 'State-' . $Self->{SystemID} . '*',
-        );
-
-        my $ActiveSessionCount = 0;
-        my %ActiveSessionPerUserCount;
-        SESSIONID:
-        for my $SessionID (@List) {
-
-            $SessionID =~ s!^.*/!!;
-            $SessionID =~ s{ State- } {}xms;
-
-            next SESSIONID if !$SessionID;
-
-            # read state data
-            my $StateData = $MainObject->FileRead(
-                Directory       => $Self->{SessionSpool},
-                Filename        => 'State-' . $SessionID,
-                Type            => 'Local',
-                Mode            => 'binmode',
-                DisableWarnings => 1,
-            );
-
-            next SESSIONID if !$StateData;
-            next SESSIONID if ref $StateData ne 'SCALAR';
-
-            my @SessionData = split '####', ${$StateData};
-
-            # get needed data
-            my $UserType        = $SessionData[0] || '';
-            my $UserLogin       = $SessionData[1] || '';
-            my $UserLastRequest = $SessionData[3] || $TimeNow;
-
-            next SESSIONID if $UserType ne $Param{UserType};
-
-            next SESSIONID if ( $UserLastRequest + $Self->{SessionActiveTime} ) < $TimeNow;
-
-            $ActiveSessionCount++;
-
-            $ActiveSessionPerUserCount{$UserLogin} || 0;
-            $ActiveSessionPerUserCount{$UserLogin}++;
-
-            next SESSIONID if $ActiveSessionCount < $SessionLimit;
-
-            $Self->{SessionIDErrorMessage} = 'Session limit reached! Please try again later.';
-
-            return;
-        }
-
-        # check session per user limit
-        if (
-            $SessionPerUserLimit
-            && $Param{UserLogin}
-            && defined $ActiveSessionPerUserCount{ $Param{UserLogin} }
-            && $ActiveSessionPerUserCount{ $Param{UserLogin} } >= $SessionPerUserLimit
-            )
-        {
-
-            $Self->{SessionIDErrorMessage} = 'Session per user limit reached!';
-
-            return;
-        }
-    }
-
     # get remote address and the http user agent
     my $RemoteAddr      = $ENV{REMOTE_ADDR}     || 'none';
     my $RemoteUserAgent = $ENV{HTTP_USER_AGENT} || 'none';
+
+    my $MainObject = $Kernel::OM->Get('Kernel::System::Main');
 
     # create session id
     my $SessionID = $Self->{SystemID} . $MainObject->GenerateRandomString(
@@ -372,7 +282,6 @@ sub RemoveSessionID {
         return;
     }
 
-    # get main object
     my $MainObject = $Kernel::OM->Get('Kernel::System::Main');
 
     # delete file
@@ -392,10 +301,8 @@ sub RemoveSessionID {
     return if !$DeleteData;
     return if !$DeleteState;
 
-    # reset cache
     delete $Self->{Cache}->{ $Param{SessionID} };
 
-    # log event
     $Kernel::OM->Get('Kernel::System::Log')->Log(
         Priority => 'notice',
         Message  => "Removed SessionID $Param{SessionID}."
@@ -448,6 +355,65 @@ sub GetAllSessionIDs {
     }
 
     return @SessionIDs;
+}
+
+sub GetActiveSessions {
+    my ( $Self, %Param ) = @_;
+
+    my $TimeNow = $Kernel::OM->Get('Kernel::System::Time')->SystemTime();
+
+    my $MainObject = $Kernel::OM->Get('Kernel::System::Main');
+
+    my @List = $MainObject->DirectoryRead(
+        Directory => $Self->{SessionSpool},
+        Filter    => 'State-' . $Self->{SystemID} . '*',
+    );
+
+    my $ActiveSessionCount = 0;
+    my %ActiveSessionPerUserCount;
+    SESSIONID:
+    for my $SessionID (@List) {
+
+        $SessionID =~ s!^.*/!!;
+        $SessionID =~ s{ State- } {}xms;
+
+        next SESSIONID if !$SessionID;
+
+        # read state data
+        my $StateData = $MainObject->FileRead(
+            Directory       => $Self->{SessionSpool},
+            Filename        => 'State-' . $SessionID,
+            Type            => 'Local',
+            Mode            => 'binmode',
+            DisableWarnings => 1,
+        );
+
+        next SESSIONID if !$StateData;
+        next SESSIONID if ref $StateData ne 'SCALAR';
+
+        my @SessionData = split '####', ${$StateData};
+
+        # get needed data
+        my $UserType        = $SessionData[0] || '';
+        my $UserLogin       = $SessionData[1] || '';
+        my $UserLastRequest = $SessionData[3] || $TimeNow;
+
+        next SESSIONID if $UserType ne $Param{UserType};
+
+        next SESSIONID if ( $UserLastRequest + $Self->{SessionActiveTime} ) < $TimeNow;
+
+        $ActiveSessionCount++;
+
+        $ActiveSessionPerUserCount{$UserLogin} || 0;
+        $ActiveSessionPerUserCount{$UserLogin}++;
+    }
+
+    my %Result = (
+        Total   => $ActiveSessionCount,
+        PerUser => \%ActiveSessionPerUserCount,
+    );
+
+    return %Result;
 }
 
 sub GetExpiredSessionIDs {

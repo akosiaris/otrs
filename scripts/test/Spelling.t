@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -137,7 +137,7 @@ for my $Test (@Tests) {
 
     # not value for spelling result means a possible not installed language issue
     if ( !%SpellCheck && $Test->{Replace} ) {
-        $Self->True(
+        $Self->False(
             0,
             "$Test->{Name} - Spelling -Seems like language file was not found," .
                 " you must install the English dictionary for the spell checker!",
@@ -200,7 +200,7 @@ for my $Test (@Tests) {
 
         $Self->True(
             1,
-            "$Test->{Name} - Spell check ok for: $Test->{Text}",
+            "$Test->{Name} - Spell check OK for: $Test->{Text}",
         );
 
     }

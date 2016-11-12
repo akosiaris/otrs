@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 use Mail::Address;
 
 our $ObjectManagerDisabled = 1;
@@ -39,8 +40,8 @@ sub Run {
     for my $Needed (qw(ArticleID TicketID QueueID)) {
         if ( !defined $Self->{$Needed} ) {
             return $LayoutObject->ErrorScreen(
-                Message => "$Needed is needed!",
-                Comment => 'Please contact your administrator',
+                Message => $LayoutObject->{LanguageObject}->Translate( '%s is needed!', $Needed ),
+                Comment => Translatable('Please contact the administrator.'),
             );
         }
     }
@@ -124,9 +125,8 @@ sub Run {
                     BodyClass => 'Popup',
                 );
                 $Output .= $LayoutObject->Warning(
-                    Message => $LayoutObject->{LanguageObject}
-                        ->Get('Sorry, you need to be the ticket owner to perform this action.'),
-                    Comment => $LayoutObject->{LanguageObject}->Get('Please change the owner first.'),
+                    Message => Translatable('Sorry, you need to be the ticket owner to perform this action.'),
+                    Comment => Translatable('Please change the owner first.'),
                 );
                 $Output .= $LayoutObject->Footer(
                     Type => 'Small',
@@ -162,7 +162,10 @@ sub Run {
         # check if plain article exists
         if ( !$TicketObject->ArticlePlain( ArticleID => $Self->{ArticleID} ) ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Plain article not found for article $Self->{ArticleID}!",
+                Message => $LayoutObject->{LanguageObject}->Translate(
+                    'Plain article not found for article %s!',
+                    $Self->{ArticleID}
+                ),
             );
         }
 
@@ -175,7 +178,10 @@ sub Run {
         # Check if article is from the same TicketID as we checked permissions for.
         if ( $Article{TicketID} ne $Self->{TicketID} ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Article does not belong to ticket $Self->{TicketID}!",
+                Message => $LayoutObject->{LanguageObject}->Translate(
+                    'Article does not belong to ticket %s!',
+                    $Self->{TicketID}
+                ),
             );
         }
 
@@ -271,8 +277,8 @@ $Param{Signature}";
             $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
             $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-            $LayoutObject->Block(
-                Name => 'RichText',
+            # set up rich text editor
+            $LayoutObject->SetRichTextParameters(
                 Data => \%Param,
             );
         }
@@ -309,8 +315,8 @@ $Param{Signature}";
 
         # get params
         for my $Parameter (qw(From BounceTo To Subject Body InformSender BounceStateID)) {
-            $Param{$Parameter}
-                = $Kernel::OM->Get('Kernel::System::Web::Request')->GetParam( Param => $Parameter ) || '';
+            $Param{$Parameter} = $Kernel::OM->Get('Kernel::System::Web::Request')->GetParam( Param => $Parameter )
+                || '';
         }
 
         my %Error;
@@ -399,8 +405,9 @@ $Param{Signature}";
                 $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
                 $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-                $LayoutObject->Block(
-                    Name => 'RichText',
+                # set up rich text editor
+                $LayoutObject->SetRichTextParameters(
+                    Data => \%Param,
                 );
             }
 
@@ -447,8 +454,8 @@ $Param{Signature}";
         # error page
         if ( !$Bounce ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Can't bounce email!",
-                Comment => 'Please contact the admin.',
+                Message => Translatable('Can\'t bounce email!'),
+                Comment => Translatable('Please contact the administrator.'),
             );
         }
 
@@ -490,8 +497,8 @@ $Param{Signature}";
             # error page
             if ( !$ArticleID ) {
                 return $LayoutObject->ErrorScreen(
-                    Message => "Can't send email!",
-                    Comment => 'Please contact the admin.',
+                    Message => Translatable('Can\'t send email!'),
+                    Comment => Translatable('Please contact the administrator.'),
                 );
             }
         }
@@ -531,8 +538,8 @@ $Param{Signature}";
         );
     }
     return $LayoutObject->ErrorScreen(
-        Message => 'Wrong Subaction!!',
-        Comment => 'Please contact your administrator',
+        Message => Translatable('Wrong Subaction!'),
+        Comment => Translatable('Please contact the administrator.'),
     );
 }
 

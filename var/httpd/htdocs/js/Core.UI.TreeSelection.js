@@ -1,5 +1,5 @@
 // --
-// Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+// Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 // --
 // This software comes with ABSOLUTELY NO WARRANTY. For details, see
 // the enclosed file COPYING for license information (AGPL). If you
@@ -33,17 +33,20 @@ Core.UI.TreeSelection = (function (TargetNS) {
      *      Gets all children of a(sub)tree.
      */
     function GetChildren(Elements, Index, Data) {
+        // Copy element structure to avoid call-by-reference problems
+        // when deleting entries while still looping over them
+        var NewElements = Elements;
         $.each(Elements, function(InnerIndex, InnerData) {
             if (typeof InnerData !== 'object') {
                 return false;
             }
             if (InnerData.ID === Data.ChildOf) {
-                Elements[InnerIndex].children.push(Data);
-                delete Elements[Index];
+                NewElements[InnerIndex].children.push(Data);
+                delete NewElements[Index];
             }
         });
 
-        return Elements;
+        return NewElements;
     }
 
     /**
@@ -58,18 +61,21 @@ Core.UI.TreeSelection = (function (TargetNS) {
      *      Collect all elements of a tree.
      */
     function CollectElements(Elements, Level) {
+        // Copy element structure to avoid call-by-reference problems
+        // when deleting entries while still looping over them
+        var NewElements = Elements;
         $.each(Elements, function(Index, Data) {
             if (typeof Data !== 'object') {
                 return false;
             }
             if (Data.Level === Level) {
                 if (Level > 0) {
-                    Elements = GetChildren(Elements, Index, Data);
+                    NewElements = GetChildren(NewElements, Index, Data);
                 }
             }
         });
 
-        return Elements;
+        return NewElements;
     }
 
     /**
@@ -247,7 +253,7 @@ Core.UI.TreeSelection = (function (TargetNS) {
 
         // Check if there are elements to select from
         if (ElementCount === 1 && $SelectObj.find('option').text() === '-') {
-            alert(Core.Config.Get('NoElementsToSelectFromMsg'));
+            alert(Core.Language.Translate('There are currently no elements available to select from.'));
             return false;
         }
 
@@ -278,7 +284,7 @@ Core.UI.TreeSelection = (function (TargetNS) {
             plugins: [ 'search' ]
         })
         /*eslint-enable camelcase */
-        .bind('select_node.jstree', function (node, selected, event) {
+        .on('select_node.jstree', function (node, selected, event) {
             var $Node = $('#' + selected.node.id);
             if ($Node.hasClass('Disabled') || !$Node.is(':visible')) {
                 $TreeObj.jstree('deselect_node', selected.node);
@@ -310,7 +316,7 @@ Core.UI.TreeSelection = (function (TargetNS) {
             }
 
         })
-        .bind('deselect_node.jstree', function () {
+        .on('deselect_node.jstree', function () {
             // If we are already in a dialog, we don't use the submit
             // button for the tree selection, so we need to apply the changes 'live'
             if (InDialog) {
@@ -338,8 +344,8 @@ Core.UI.TreeSelection = (function (TargetNS) {
             Core.UI.Dialog.ShowContentDialog('<div class="OverlayTreeSelector" id="TreeContainer"></div>', DialogTitle, '20%', 'Center', true);
             $('#TreeContainer')
                 .prepend($TreeObj)
-                .prepend('<div id="TreeSearch"><input type="text" id="TreeSearchInput" placeholder="' + Core.Config.Get('SearchMsg') + '..." /><span title="' + Core.Config.Get('DeleteMsg') + '">x</span></div>')
-                .append('<input type="button" id="SubmitTree" class="Primary" title="' + Core.Config.Get('ApplyButtonText') + '" value="' + Core.Config.Get('ApplyButtonText') + '" />');
+                .prepend('<div id="TreeSearch"><input type="text" id="TreeSearchInput" placeholder="' + Core.Language.Translate('Search') + '..." /><span title="' + Core.Language.Translate('Delete') + '">x</span></div>')
+                .append('<input type="button" id="SubmitTree" class="Primary" title="' + Core.Language.Translate('Apply') + '" value="' + Core.Language.Translate('Apply') + '" />');
         }
         else {
             $TreeObj
@@ -354,7 +360,7 @@ Core.UI.TreeSelection = (function (TargetNS) {
         $CurrentFocusedObj = document.activeElement;
         $('#TreeSearch').find('input').focus();
 
-        $('#TreeSearch').find('input').bind('keyup', function() {
+        $('#TreeSearch').find('input').on('keyup', function() {
             $TreeObj.jstree('search', $(this).val());
 
             // Make sure sub-trees of matched nodes are expanded
@@ -367,12 +373,12 @@ Core.UI.TreeSelection = (function (TargetNS) {
                 });
         });
 
-        $('#TreeSearch').find('span').bind('click', function() {
+        $('#TreeSearch').find('span').on('click', function() {
             $(this).prev('input').val('');
             $TreeObj.jstree('clear_search');
         });
 
-        $('#TreeContainer').find('input#SubmitTree').bind('click', function() {
+        $('#TreeContainer').find('input#SubmitTree').on('click', function() {
             var SelectedObj = $TreeObj.jstree('get_selected', true),
                 $Node;
             if (typeof SelectedObj === 'object' && SelectedObj[0]) {
@@ -542,6 +548,20 @@ Core.UI.TreeSelection = (function (TargetNS) {
 
         $FieldObj.addClass('TreeViewRestored');
     };
+
+    /**
+     * @name Init
+     * @memberof Core.UI.TreeSelection
+     * @function
+     * @description
+     *      Initializes the namespace.
+     */
+    TargetNS.Init = function () {
+        Core.UI.TreeSelection.InitTreeSelection();
+        Core.UI.TreeSelection.InitDynamicFieldTreeViewRestore();
+    };
+
+    Core.Init.RegisterNamespace(TargetNS, 'APP_GLOBAL');
 
     return TargetNS;
 }(Core.UI.TreeSelection || {}));

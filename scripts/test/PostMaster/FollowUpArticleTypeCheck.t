@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -15,13 +15,22 @@ use vars (qw($Self));
 use Kernel::System::PostMaster;
 
 # get needed objects
-my $ConfigObject            = $Kernel::OM->Get('Kernel::Config');
-my $TicketObject            = $Kernel::OM->Get('Kernel::System::Ticket');
-my $DynamicFieldObject      = $Kernel::OM->Get('Kernel::System::DynamicField');
-my $DynamicFieldValueObject = $Kernel::OM->Get('Kernel::System::DynamicFieldValue');
-my $HelperObject            = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+$ConfigObject->Set(
+    Key   => 'CheckEmailAddresses',
+    Value => 0,
+);
 
-$HelperObject->FixedTimeSet();
+my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+$Helper->FixedTimeSet();
 
 my $AgentAddress    = 'agent@example.com';
 my $CustomerAddress = 'external@example.com';
@@ -35,7 +44,7 @@ my $TicketID = $TicketObject->TicketCreate(
     Priority     => '3 normal',
     State        => 'open',
     CustomerNo   => '123465',
-    CustomerUser => 'customer@example.com',
+    CustomerUser => 'external@example.com',
     OwnerID      => 1,
     UserID       => 1,
 );
@@ -48,6 +57,7 @@ $Self->True(
 my $ArticleID = $TicketObject->ArticleCreate(
     TicketID       => $TicketID,
     ArticleType    => 'email-external',
+    MessageID      => 'message-id-email-external',
     SenderType     => 'customer',
     From           => "Customer <$CustomerAddress>",
     To             => "Agent <$AgentAddress>",
@@ -57,7 +67,7 @@ my $ArticleID = $TicketObject->ArticleCreate(
     HistoryType    => 'NewTicket',
     HistoryComment => 'Some free text!',
     UserID         => 1,
-    NoAgentNotify  => 1,                                   # if you don't want to send agent notifications
+    NoAgentNotify  => 1,
 );
 
 $Self->True(
@@ -68,6 +78,7 @@ $Self->True(
 $ArticleID = $TicketObject->ArticleCreate(
     TicketID       => $TicketID,
     ArticleType    => 'email-internal',
+    MessageID      => 'message-id-email-internal',
     SenderType     => 'agent',
     From           => "Agent <$AgentAddress>",
     To             => "Provider <$InternalAddress>",
@@ -77,7 +88,29 @@ $ArticleID = $TicketObject->ArticleCreate(
     HistoryType    => 'NewTicket',
     HistoryComment => 'Some free text!',
     UserID         => 1,
-    NoAgentNotify  => 1,                                   # if you don't want to send agent notifications
+    NoAgentNotify  => 1,
+);
+
+$Self->True(
+    $ArticleID,
+    "ArticleCreate()",
+);
+
+# Accidential internal forward to the customer to test that customer replies are still external.
+$ArticleID = $TicketObject->ArticleCreate(
+    TicketID       => $TicketID,
+    ArticleType    => 'email-internal',
+    MessageID      => 'message-id-email-internal-customer',
+    SenderType     => 'agent',
+    From           => "Agent <$AgentAddress>",
+    To             => "Customer <$CustomerAddress>",
+    Subject        => 'subject',
+    Body           => 'the message text',
+    ContentType    => 'text/plain; charset=ISO-8859-15',
+    HistoryType    => 'NewTicket',
+    HistoryComment => 'Some free text!',
+    UserID         => 1,
+    NoAgentNotify  => 1,
 );
 
 $Self->True(
@@ -116,10 +149,30 @@ Some Content in Body",
         },
     },
 
-    # response to internal address, must be made internal
+    # response from internal address, must be made internal
     {
         Name  => 'Provider response',
         Email => "From: Provider <$InternalAddress>
+To: Agent <$AgentAddress>
+Subject: $Subject
+
+Some Content in Body",
+        Check => {
+            ArticleType => 'email-internal',
+            SenderType  => 'customer',
+        },
+        JobConfig => {
+            ArticleType => 'email-internal',
+            Module      => 'Kernel::System::PostMaster::Filter::FollowUpArticleTypeCheck',
+            SenderType  => 'customer',
+        },
+    },
+
+    # response from forwarded customer address, must be made internal
+    {
+        Name  => 'Provider response',
+        Email => "From: Forwarded Address <forwarded\@googlemail.com>
+Reply-To: Provider <$InternalAddress>
 To: Agent <$AgentAddress>
 Subject: $Subject
 
@@ -175,9 +228,30 @@ Some Content in Body",
             SenderType  => 'customer',
         },
     },
+
+    # response from an unknown address, but in response to the internal article (References)
+    {
+        Name  => 'Response to internal mail from unknown sender',
+        Email => "From: Somebody <unknown\@address.com>
+To: Agent <$AgentAddress>
+References: <message-id-email-internal>
+Subject: $Subject
+
+Some Content in Body",
+        Check => {
+            ArticleType => 'email-internal',
+            SenderType  => 'customer',
+        },
+        JobConfig => {
+            ArticleType => 'email-internal',
+            Module      => 'Kernel::System::PostMaster::Filter::FollowUpArticleTypeCheck',
+            SenderType  => 'customer',
+        },
+    },
 );
 
-for my $Test (@Tests) {
+my $RunTest = sub {
+    my $Test = shift;
 
     $ConfigObject->Set(
         Key   => 'PostMaster::PostFilterModule',
@@ -217,7 +291,7 @@ for my $Test (@Tests) {
         "$Test->{Name} - Follow up TicketID",
     );
 
-    # Get state of old articles after udpate
+    # Get state of old articles after update
     my @ArticleBoxUpdate = $TicketObject->ArticleGet(
         TicketID => $TicketID,
         Limit    => scalar @ArticleBoxOriginal,
@@ -243,16 +317,42 @@ for my $Test (@Tests) {
             "$Test->{Name} - Check value $Key",
         );
     }
+
+    return;
+};
+
+# First run the tests for a ticket that has the customer as an "unknown" customer.
+for my $Test (@Tests) {
+    $RunTest->($Test);
 }
 
-# delete tickets
-my $Delete = $TicketObject->TicketDelete(
+# Now add the customer to the customer database and run the tests again.
+my $TestCustomerLogin  = $Helper->TestCustomerUserCreate();
+my $CustomerUserObject = $Kernel::OM->Get('Kernel::System::CustomerUser');
+my %CustomerData       = $CustomerUserObject->CustomerUserDataGet(
+    User => $TestCustomerLogin,
+);
+$CustomerUserObject->CustomerUserUpdate(
+    %CustomerData,
+    Source    => 'CustomerUser',       # CustomerUser source config
+    ID        => $TestCustomerLogin,
+    UserEmail => $CustomerAddress,
+    UserID    => 1,
+);
+%CustomerData = $CustomerUserObject->CustomerUserDataGet(
+    User => $TestCustomerLogin,
+);
+$TicketObject->TicketCustomerSet(
+    No       => $CustomerData{CustomerID},
+    User     => $TestCustomerLogin,
     TicketID => $TicketID,
     UserID   => 1,
 );
-$Self->True(
-    $Delete || 0,
-    "TicketDelete()",
-);
+
+for my $Test (@Tests) {
+    $RunTest->($Test);
+}
+
+# cleanup is done by RestoreDatabase.
 
 1;

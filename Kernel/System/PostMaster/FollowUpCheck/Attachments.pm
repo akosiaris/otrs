@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -33,8 +33,13 @@ sub Run {
 
     my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
 
+    # The first attachment in a MIME email in OTRS is currently the body,
+    #   so ignore it for this follow up check.
+    my @Attachments = $Self->{ParserObject}->GetAttachments();
+    shift @Attachments;
+
     ATTACHMENT:
-    for my $Attachment ( $Self->{ParserObject}->GetAttachments() ) {
+    for my $Attachment (@Attachments) {
 
         my $Tn = $TicketObject->GetTNByString( $Attachment->{Content} );
         next ATTACHMENT if !$Tn;

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -13,6 +13,7 @@ use warnings;
 
 use Term::ANSIColor();
 use SOAP::Lite;
+use FileHandle;
 
 use Kernel::System::ObjectManager;
 ## nofilter(TidyAll::Plugin::OTRS::Perl::ObjectManagerCreation)
@@ -34,23 +35,17 @@ our @ObjectDependencies = (
 
 Kernel::System::UnitTest - global test interface
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 Functions to run existing unit tests, as well as
 functions to define test cases.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create unit test object. Do not use it directly, instead use:
 
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $UnitTestObject = $Kernel::OM->Get('Kernel::System::UnitTest');
 
 =cut
@@ -86,18 +81,23 @@ sub new {
     $Self->{XML}     = undef;
     $Self->{XMLUnit} = '';
 
+    open( $Self->{OriginalSTDOUT}, ">&STDOUT" );
+    open( $Self->{OriginalSTDERR}, ">&STDOUT" );
+    $Self->{OriginalSTDOUT}->autoflush(1);
+    $Self->{OriginalSTDERR}->autoflush(1);
+
     return $Self;
 }
 
-=item Run()
+=head2 Run()
 
 Run all tests located in scripts/test/*.t and print result to stdout.
 
     $UnitTestObject->Run(
         Name      => 'JSON:User:Auth',  # optional, control which tests to select
         Directory => 'Selenium',        # optional, control which tests to select
-
         SubmitURL => $URL,              # optional, send results to unit test result server
+        Verbose   => 1,                 # optional (default 0), only show result details for all tests, not just failing
     );
 
 =cut
@@ -115,6 +115,8 @@ sub Run {
         $Directory .= "/$Param{Directory}";
         $Directory =~ s/\.//g;
     }
+
+    $Self->{Verbose} = $Param{Verbose};
 
     my @Files = $Kernel::OM->Get('Kernel::System::Main')->DirectoryRead(
         Directory => $Directory,
@@ -175,15 +177,27 @@ sub Run {
 
                 push @{ $Self->{NotOkInfo} }, [$File];
 
+                $Self->{OutputBuffer} = '';
+                local *STDOUT = *STDOUT;
+                local *STDERR = *STDERR;
+                if ( !$Param{Verbose} ) {
+                    undef *STDOUT;
+                    undef *STDERR;
+                    open STDOUT, '>:utf8', \$Self->{OutputBuffer};    ## no critic
+                    open STDERR, '>:utf8', \$Self->{OutputBuffer};    ## no critic
+                }
+
                 # HERE the actual tests are run!!!
-                if ( !eval ${$UnitTestFile} ) {    ## no critic
+                if ( !eval ${$UnitTestFile} ) {                       ## no critic
                     if ($@) {
                         $Self->True( 0, "ERROR: Error in $File: $@" );
-                        print STDERR "ERROR: Error in $File: $@\n";
+
+                        #print STDERR "ERROR: Error in $File: $@\n";
                     }
                     else {
                         $Self->True( 0, "ERROR: $File did not return a true value." );
-                        print STDERR "ERROR: $File did not return a true value.\n";
+
+                        #print STDERR "ERROR: $File did not return a true value.\n";
                     }
                 }
             }
@@ -236,6 +250,9 @@ sub Run {
             $Content =~ s/&/&amp;/g;
             $Content =~ s/</&lt;/g;
             $Content =~ s/>/&gt;/g;
+
+            # Replace characters that are invalid in XML (https://www.w3.org/TR/REC-xml/#charsets)
+            $Content =~ s/[^\x{0009}\x{000a}\x{000d}\x{0020}-\x{D7FF}\x{E000}-\x{FFFD}]+/"\x{FFFD}"/eg;
             $XML .= qq|  <Test Result="$Result" Count="$TestCount">$Content</Test>\n|;
         }
 
@@ -262,7 +279,7 @@ sub Run {
     return $ResultSummary{TestNotOk} ? 0 : 1;
 }
 
-=item True()
+=head2 True()
 
 test for a scalar value that evaluates to true.
 
@@ -304,7 +321,7 @@ sub True {
     }
 }
 
-=item False()
+=head2 False()
 
 test for a scalar value that evaluates to false.
 
@@ -335,7 +352,7 @@ sub False {
     }
 }
 
-=item Is()
+=head2 Is()
 
 compares two scalar values for equality.
 
@@ -389,7 +406,7 @@ sub Is {
     }
 }
 
-=item IsNot()
+=head2 IsNot()
 
 compares two scalar values for inequality.
 
@@ -432,7 +449,7 @@ sub IsNot {
     }
 }
 
-=item IsDeeply()
+=head2 IsDeeply()
 
 compares complex data structures for equality.
 
@@ -495,7 +512,7 @@ sub IsDeeply {
     }
 }
 
-=item IsNotDeeply()
+=head2 IsNotDeeply()
 
 compares two data structures for inequality.
 
@@ -552,7 +569,7 @@ sub IsNotDeeply {
 
 =cut
 
-=item _DataDiff()
+=head2 _DataDiff()
 
 compares two data structures with each other. Returns 1 if
 they are different, undef otherwise.
@@ -785,6 +802,7 @@ sub _PrintHeadlineEnd {
         $Self->{Content} .= "</table><br>\n";
     }
     elsif ( $Self->{Output} eq 'ASCII' ) {
+        print "\n";
     }
 
     # calculate duration time
@@ -807,9 +825,14 @@ sub _Print {
     $Name ||= '->>No Name!<<-';
 
     my $PrintName = $Name;
-    if ( length $PrintName > 1000 ) {
+    if ( length $PrintName > 1000 && !$Self->{Verbose} ) {
         $PrintName = substr( $PrintName, 0, 1000 ) . "...";
     }
+
+    if ( $Self->{Output} eq 'ASCII' && ( $Self->{Verbose} || !$Test ) ) {
+        print { $Self->{OriginalSTDOUT} } $Self->{OutputBuffer};
+    }
+    $Self->{OutputBuffer} = '';
 
     $Self->{TestCount}++;
     if ($Test) {
@@ -819,7 +842,14 @@ sub _Print {
                 .= "<tr><td width='70' bgcolor='green'>ok $Self->{TestCount}</td><td>$Name</td></tr>\n";
         }
         elsif ( $Self->{Output} eq 'ASCII' ) {
-            print " " . $Self->_Color( 'green', "ok" ) . " $Self->{TestCount} - $PrintName\n";
+            if ( $Self->{Verbose} ) {
+                print { $Self->{OriginalSTDOUT} } " "
+                    . $Self->_Color( 'green', "ok" )
+                    . " $Self->{TestCount} - $PrintName\n";
+            }
+            else {
+                print { $Self->{OriginalSTDOUT} } $Self->_Color( 'green', "." );
+            }
         }
         $Self->{XML}->{Test}->{ $Self->{XMLUnit} }->{ $Self->{TestCount} }->{Result} = 'ok';
         $Self->{XML}->{Test}->{ $Self->{XMLUnit} }->{ $Self->{TestCount} }->{Name}   = $Name;
@@ -832,7 +862,12 @@ sub _Print {
                 .= "<tr><td width='70' bgcolor='red'>not ok $Self->{TestCount}</td><td>$Name</td></tr>\n";
         }
         elsif ( $Self->{Output} eq 'ASCII' ) {
-            print " " . $Self->_Color( 'red', "not ok" ) . " $Self->{TestCount} - $PrintName\n";
+            if ( !$Self->{Verbose} ) {
+                print { $Self->{OriginalSTDOUT} } "\n";
+            }
+            print { $Self->{OriginalSTDOUT} } " "
+                . $Self->_Color( 'red', "not ok" )
+                . " $Self->{TestCount} - $PrintName\n";
         }
         $Self->{XML}->{Test}->{ $Self->{XMLUnit} }->{ $Self->{TestCount} }->{Result} = 'not ok';
         $Self->{XML}->{Test}->{ $Self->{XMLUnit} }->{ $Self->{TestCount} }->{Name}   = $Name;
@@ -854,7 +889,7 @@ sub _Print {
     }
 }
 
-=item _Color()
+=head2 _Color()
 
 this will color the given text (see Term::ANSIColor::color()) if
 ANSI output is available and active, otherwise the text stays unchanged.
@@ -883,8 +918,6 @@ sub DESTROY {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

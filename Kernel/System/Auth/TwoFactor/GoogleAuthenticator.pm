@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -128,8 +128,11 @@ sub _GenerateOTP {
 
     # algorithm based on RfC 6238
 
+    #
     # get unix timestamp divided by 30
-    my $TimeStamp = $Kernel::OM->Get('Kernel::System::Time')->SystemTime();
+    #
+    my $DateTimeObject = $Kernel::OM->Create('Kernel::System::DateTime');
+    my $TimeStamp      = $DateTimeObject->ToEpoch();
     $TimeStamp = int( $TimeStamp / 30 );
 
     # on request use previous 30-second time period

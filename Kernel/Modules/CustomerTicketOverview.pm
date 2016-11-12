@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -15,6 +15,7 @@ use warnings;
 our $ObjectManagerDisabled = 1;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 sub new {
     my ( $Type, %Param ) = @_;
@@ -48,8 +49,12 @@ sub Run {
 
     # check needed CustomerID
     if ( !$Self->{UserCustomerID} ) {
-        my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
-        $Output .= $LayoutObject->CustomerError( Message => 'Need CustomerID!!!' );
+        my $Output = $LayoutObject->CustomerHeader(
+            Title => Translatable('Error'),
+        );
+        $Output .= $LayoutObject->CustomerError(
+            Message => Translatable('Need CustomerID!'),
+        );
         $Output .= $LayoutObject->CustomerFooter();
         return $Output;
     }
@@ -154,9 +159,11 @@ sub Run {
 
     # check if filter is valid
     if ( !$Filters{ $Self->{Subaction} }->{$FilterCurrent} ) {
-        my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
+        my $Output = $LayoutObject->CustomerHeader(
+            Title => Translatable('Error'),
+        );
         $Output .= $LayoutObject->CustomerError(
-            Message => "Invalid Filter: $FilterCurrent!",
+            Message => $LayoutObject->{LanguageObject}->Translate( 'Invalid Filter: %s!', $FilterCurrent ),
         );
         $Output .= $LayoutObject->CustomerFooter();
         return $Output;
@@ -185,7 +192,7 @@ sub Run {
             %{ $Filters{ $Self->{Subaction} }->{$Filter}->{Search} },
             %SearchInArchive,
             Result => 'COUNT',
-        );
+        ) || 0;
 
         my $ClassA = '';
         if ( $Filter eq $FilterCurrent ) {
@@ -535,12 +542,19 @@ sub Run {
     }
 
     # create & return output
+    my $Title = $Self->{Subaction};
+    if ( $Title eq 'MyTickets' ) {
+        $Title = Translatable('My Tickets');
+    }
+    elsif ( $Title eq 'CompanyTickets' ) {
+        $Title = Translatable('Company Tickets');
+    }
     my $Refresh = '';
     if ( $Self->{UserRefreshTime} ) {
         $Refresh = 60 * $Self->{UserRefreshTime};
     }
     my $Output = $LayoutObject->CustomerHeader(
-        Title   => $Self->{Subaction},
+        Title   => $Title,
         Refresh => $Refresh,
     );
 
@@ -652,7 +666,7 @@ sub ShowTicketStatus {
 
     # if there is no subject try with Ticket title or set to Untitled
     if ( !$Subject ) {
-        $Subject = $Ticket{Title} || 'Untitled!';
+        $Subject = $Ticket{Title} || Translatable('Untitled!');
     }
 
     # condense down the subject

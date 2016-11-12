@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -20,7 +20,7 @@ our $ObjectManagerDisabled = 1;
 
 Kernel::System::EventHandler - event handler interface
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 Inherit from this class if you want to use events there.
 
@@ -39,11 +39,7 @@ This is only neccessary if you use 'Transaction' events in your class.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item EventHandlerInit()
+=head2 EventHandlerInit()
 
 Call this to initialize the event handling mechanisms to work
 correctly with your object.
@@ -121,7 +117,7 @@ sub EventHandlerInit {
     return 1;
 }
 
-=item EventHandler()
+=head2 EventHandler()
 
 call event handler, returns true if it was executed successfully.
 
@@ -232,7 +228,7 @@ sub EventHandler {
     return 1;
 }
 
-=item EventHandlerTransaction()
+=head2 EventHandlerTransaction()
 
 handle all queued 'Transaction' events which were collected up to this point.
 
@@ -279,7 +275,7 @@ sub EventHandlerTransaction {
     return 1;
 }
 
-=item EventHandlerHasQueuedTransactions()
+=head2 EventHandlerHasQueuedTransactions()
 
 Return a true value if there are queued transactions, which
 C<EventHandlerTransaction> handles, when called.
@@ -293,8 +289,6 @@ sub EventHandlerHasQueuedTransactions {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

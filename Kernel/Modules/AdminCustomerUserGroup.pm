@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -118,7 +118,7 @@ sub Run {
         # output rows
         for my $Counter ( 1 .. $MaxCount ) {
 
-            # get service
+            # get user
             my %User = $CustomerUserObject->CustomerUserDataGet(
                 User => $CustomerUserKeyList[ $Counter - 1 ],
             );
@@ -202,11 +202,20 @@ sub Run {
             );
         }
 
-        # redirect to overview
-        return $LayoutObject->Redirect(
-            OP =>
-                "Action=$Self->{Action};CustomerUserSearch=$Param{CustomerUserSearch}"
-        );
+     # if the user would like to continue editing the customer user relations for group just redirect to the edit screen
+        if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+            return $LayoutObject->Redirect(
+                OP =>
+                    "Action=$Self->{Action};Subaction=Group;ID=$ID;CustomerUserSearch=$Param{CustomerUserSearch}"
+            );
+        }
+        else {
+
+            # otherwise return to relations overview
+            return $LayoutObject->Redirect(
+                OP => "Action=$Self->{Action};CustomerUserSearch=$Param{CustomerUserSearch}"
+            );
+        }
     }
 
     # ------------------------------------------------------------ #
@@ -250,11 +259,20 @@ sub Run {
             );
         }
 
-        # return to overview
-        return $LayoutObject->Redirect(
-            OP =>
-                "Action=$Self->{Action};CustomerUserSearch=$Param{CustomerUserSearch}"
-        );
+     # if the user would like to continue editing the customer user relations for group just redirect to the edit screen
+        if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+            return $LayoutObject->Redirect(
+                OP =>
+                    "Action=$Self->{Action};Subaction=CustomerUser;ID=$ID;CustomerUserSearch=$Param{CustomerUserSearch}"
+            );
+        }
+        else {
+
+            # otherwise return to relations overview
+            return $LayoutObject->Redirect(
+                OP => "Action=$Self->{Action};CustomerUserSearch=$Param{CustomerUserSearch}"
+            );
+        }
     }
 
     # ------------------------------------------------------------ #
@@ -339,8 +357,21 @@ sub _Change {
 
     my @ItemList = ();
 
+    if ( $VisibleType{$NeType} eq 'Customer' ) {
+        $Param{BreadcrumbTitle} = "Change Customer User Relations for Group";
+    }
+    else {
+        $Param{BreadcrumbTitle} = "Change Group Relations for Customer User";
+    }
+
     # overview
-    $LayoutObject->Block( Name => 'Overview' );
+    $LayoutObject->Block(
+        Name => 'Overview',
+        Data => {
+            %Param,
+            OverviewLink => $Self->{Action} . ';CustomerUserSearch=' . $Param{CustomerUserSearch},
+        },
+    );
     $LayoutObject->Block( Name => 'ActionList' );
     $LayoutObject->Block(
         Name => 'ActionOverview',
@@ -371,7 +402,7 @@ sub _Change {
     }
     else {
 
-        # Output config shutcut to CustomerAlwaysGroups
+        # output config shortcut to CustomerAlwaysGroups
         $LayoutObject->Block( Name => 'AlwaysGroupsConfig' );
 
         $LayoutObject->Block( Name => 'Filter' );
@@ -386,17 +417,19 @@ sub _Change {
             ActionHome    => 'Admin' . $Type,
             VisibleNeType => $VisibleType{$NeType},
             VisibleType   => $VisibleType{$Type},
+            Subaction     => $Self->{Subaction},
         },
     );
 
-    $LayoutObject->Block(
-        Name => "ChangeHeading$VisibleType{$NeType}",
-    );
+    my @GroupPermissions;
 
     TYPE:
     for my $Type ( @{ $ConfigObject->Get('System::Customer::Permission') } ) {
         next TYPE if !$Type;
         my $Mark = $Type eq 'rw' ? "Highlight" : '';
+
+        push @GroupPermissions, $Type;
+
         $LayoutObject->Block(
             Name => 'ChangeHeader',
             Data => {
@@ -406,6 +439,12 @@ sub _Change {
             },
         );
     }
+
+    # set group permissions
+    $LayoutObject->AddJSData(
+        Key   => 'RelationItems',
+        Value => \@GroupPermissions,
+    );
 
     # check if there are groups/customers
     if ( !%Data ) {
@@ -517,9 +556,13 @@ sub _Overview {
     my %GroupData           = %{ $Param{GroupData} };
     my $SearchLimit         = $Param{SearchLimit};
 
+    # overview
     $LayoutObject->Block(
         Name => 'Overview',
-        Data => {},
+        Data => {
+            %Param,
+            OverviewLink => $Self->{Action},
+            }
     );
 
     $LayoutObject->Block( Name => 'ActionList' );

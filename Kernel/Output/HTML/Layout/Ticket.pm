@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -19,15 +20,13 @@ our $ObjectManagerDisabled = 1;
 
 Kernel::Output::HTML::Layout::Ticket - all Ticket-related HTML functions
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All Ticket-related HTML functions
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=item AgentCustomerViewTable()
+=head2 AgentCustomerViewTable()
 
 =cut
 
@@ -62,7 +61,7 @@ sub AgentCustomerViewTable {
     }
 
     my $ShownType = 1;
-    if ( $Param{Type} && $Param{Type} eq 'Lite' ) {
+    if ( $Param{Type} && $Param{Type} eq Translatable('Lite') ) {
         $ShownType = 2;
 
         # check if min one lite view item is configured, if not, use
@@ -114,7 +113,17 @@ sub AgentCustomerViewTable {
         }
     }
 
+    my $DynamicFieldConfigs = $Kernel::OM->Get('Kernel::System::DynamicField')->DynamicFieldListGet(
+        ObjectType => [ 'CustomerUser', 'CustomerCompany', ],
+    );
+
+    my %DynamicFieldLookup = map { $_->{Name} => $_ } @{$DynamicFieldConfigs};
+
+    # Get dynamic field object.
+    my $DynamicFieldBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
+
     # build table
+    FIELD:
     for my $Field (@MapNew) {
         if ( $Field->[3] && $Field->[3] >= $ShownType && $Param{Data}->{ $Field->[0] } ) {
             my %Record = (
@@ -122,6 +131,36 @@ sub AgentCustomerViewTable {
                 Key   => $Field->[1],
                 Value => $Param{Data}->{ $Field->[0] },
             );
+
+            # render dynamic field values
+            if ( $Field->[5] eq 'dynamic_field' ) {
+                if ( !IsArrayRefWithData( $Record{Value} ) ) {
+                    $Record{Value} = [ $Record{Value} ];
+                }
+
+                my $DynamicFieldConfig = $DynamicFieldLookup{ $Field->[2] };
+
+                next FIELD if !$DynamicFieldConfig;
+
+                my @RenderedValues;
+                VALUE:
+                for my $Value ( @{ $Record{Value} } ) {
+                    my $RenderedValue = $DynamicFieldBackendObject->DisplayValueRender(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        Value              => $Value,
+                        HTMLOutput         => 0,
+                        LayoutObject       => $Self,
+                    );
+
+                    next VALUE if !IsHashRefWithData($RenderedValue) || !defined $RenderedValue->{Value};
+
+                    push @RenderedValues, $RenderedValue->{Value};
+                }
+
+                $Record{Value} = join ', ', @RenderedValues;
+                $Record{Key} = $DynamicFieldConfig->{Label};
+            }
+
             if ( $Field->[6] ) {
                 $Record{LinkStart} = "<a href=\"$Field->[6]\"";
                 if ( $Field->[8] ) {
@@ -158,6 +197,102 @@ sub AgentCustomerViewTable {
                     if ( !$CompanyIsValid ) {
                         $Self->Block(
                             Name => 'CustomerRowCustomerCompanyInvalid',
+                        );
+                    }
+                }
+            }
+
+            if (
+                $ConfigObject->Get('ChatEngine::Active')
+                && $Field->[0] eq 'UserLogin'
+                )
+            {
+                # Check if agent has permission to start chats with the customer users.
+                my $EnableChat = 1;
+                my $ChatStartingAgentsGroup
+                    = $ConfigObject->Get('ChatEngine::PermissionGroup::ChatStartingAgents') || 'users';
+
+                if (
+                    !defined $Self->{"UserIsGroup[$ChatStartingAgentsGroup]"}
+                    || $Self->{"UserIsGroup[$ChatStartingAgentsGroup]"} ne 'Yes'
+                    )
+                {
+                    $EnableChat = 0;
+                }
+                if (
+                    $EnableChat
+                    && !$ConfigObject->Get('ChatEngine::ChatDirection::AgentToCustomer')
+                    )
+                {
+                    $EnableChat = 0;
+                }
+
+                if ($EnableChat) {
+                    my $VideoChatEnabled = 0;
+                    my $VideoChatAgentsGroup
+                        = $ConfigObject->Get('ChatEngine::PermissionGroup::VideoChatAgents') || 'users';
+
+                    # Enable the video chat feature if system is entitled and agent is a member of configured group.
+                    if (
+                        defined $Self->{"UserIsGroup[$VideoChatAgentsGroup]"}
+                        && $Self->{"UserIsGroup[$VideoChatAgentsGroup]"} eq 'Yes'
+                        )
+                    {
+                        if ( $Kernel::OM->Get('Kernel::System::Main')
+                            ->Require( 'Kernel::System::VideoChat', Silent => 1 ) )
+                        {
+                            $VideoChatEnabled = $Kernel::OM->Get('Kernel::System::VideoChat')->IsEnabled();
+                        }
+                    }
+
+                    my $CustomerEnableChat = 0;
+                    my $ChatAccess         = 0;
+                    my $VideoChatAvailable = 0;
+                    my $VideoChatSupport   = 0;
+
+                    # Default status is offline.
+                    my $UserState            = Translatable('Offline');
+                    my $UserStateDescription = $Self->{LanguageObject}->Translate('This user is currently offline');
+
+                    my $CustomerChatAvailability = $Kernel::OM->Get('Kernel::System::Chat')->CustomerAvailabilityGet(
+                        UserID => $Param{Data}->{UserID},
+                    );
+
+                    my %CustomerUser = $Kernel::OM->Get('Kernel::System::CustomerUser')->CustomerUserDataGet(
+                        User => $Param{Data}->{UserID},
+                    );
+                    $VideoChatSupport = 1 if $CustomerUser{VideoChatHasWebRTC};
+
+                    if ( $CustomerChatAvailability == 3 ) {
+                        $UserState            = Translatable('Active');
+                        $CustomerEnableChat   = 1;
+                        $UserStateDescription = $Self->{LanguageObject}->Translate('This user is currently active');
+                        $VideoChatAvailable   = 1;
+                    }
+                    elsif ( $CustomerChatAvailability == 2 ) {
+                        $UserState            = Translatable('Away');
+                        $CustomerEnableChat   = 1;
+                        $UserStateDescription = $Self->{LanguageObject}->Translate('This user is currently away');
+                    }
+
+                    $Self->Block(
+                        Name => 'CustomerRowUserStatus',
+                        Data => {
+                            %CustomerUser,
+                            UserState            => $UserState,
+                            UserStateDescription => $UserStateDescription,
+                        },
+                    );
+
+                    if ($CustomerEnableChat) {
+                        $Self->Block(
+                            Name => 'CustomerRowChatIcons',
+                            Data => {
+                                %CustomerUser,
+                                VideoChatEnabled   => $VideoChatEnabled,
+                                VideoChatAvailable => $VideoChatAvailable,
+                                VideoChatSupport   => $VideoChatSupport,
+                            },
                         );
                     }
                 }
@@ -279,7 +414,7 @@ sub AgentQueueListOption {
         # find index of first element in array @QueueDataArray for displaying in frontend
         # at the top should be element with ' $QueueDataArray[$_]->{Key} = 0' like "- Move -"
         # when such element is found, it is moved at the top
-        my ($FirstElementIndex) = grep $QueueDataArray[$_]->{Key} == 0, 0 .. $#QueueDataArray;
+        my ($FirstElementIndex) = grep $QueueDataArray[$_]->{Key} == 0, 0 .. $#QueueDataArray || 0;
         splice( @QueueDataArray, 0, 0, splice( @QueueDataArray, $FirstElementIndex, 1 ) );
         $Param{Data} = \@QueueDataArray;
 
@@ -315,7 +450,7 @@ sub AgentQueueListOption {
     # add suffix for correct sorting
     my $KeyNoQueue;
     my $ValueNoQueue;
-    my $MoveStr = $Self->{LanguageObject}->Get('Move');
+    my $MoveStr = $Self->{LanguageObject}->Translate('Move');
     my $ValueOfQueueNoKey .= "- " . $MoveStr . " -";
     DATA:
     for ( sort { $Data{$a} cmp $Data{$b} } keys %Data ) {
@@ -334,10 +469,13 @@ sub AgentQueueListOption {
         $Data{$_} .= '::';
     }
 
+    # get HTML utils object
+    my $HTMLUtilsObject = $Kernel::OM->Get('Kernel::System::HTMLUtils');
+
     # set default item of select box
     if ($ValueNoQueue) {
         $Param{MoveQueuesStrg} .= '<option value="'
-            . $KeyNoQueue
+            . $HTMLUtilsObject->ToHTML( String => $KeyNoQueue )
             . '">'
             . $ValueNoQueue
             . "</option>\n";
@@ -372,9 +510,6 @@ sub AgentQueueListOption {
                     }
                 }
             }
-
-            # get HTML utils object
-            my $HTMLUtilsObject = $Kernel::OM->Get('Kernel::System::HTMLUtils');
 
             if ( !$UsedData{$UpQueue} ) {
 
@@ -424,6 +559,9 @@ sub AgentQueueListOption {
                 );
                 $OptionTitleHTMLValue = ' title="' . $HTMLValue . '"';
             }
+            my $HTMLValue = $HTMLUtilsObject->ToHTML(
+                String => $_,
+            );
             if (
                 $SelectedID eq $_
                 || $Selected eq $Param{Data}->{$_}
@@ -432,7 +570,7 @@ sub AgentQueueListOption {
             {
                 $Param{MoveQueuesStrg}
                     .= '<option selected="selected" value="'
-                    . $_ . '"'
+                    . $HTMLValue . '"'
                     . $OptionTitleHTMLValue . '>'
                     . $String
                     . "</option>\n";
@@ -448,7 +586,7 @@ sub AgentQueueListOption {
             else {
                 $Param{MoveQueuesStrg}
                     .= '<option value="'
-                    . $_ . '"'
+                    . $HTMLValue . '"'
                     . $OptionTitleHTMLValue . '>'
                     . $String
                     . "</option>\n";
@@ -469,7 +607,7 @@ sub AgentQueueListOption {
     return $Param{MoveQueuesStrg};
 }
 
-=item ArticleQuote()
+=head2 ArticleQuote()
 
 get body and attach e. g. inline documents and/or attach all attachments to
 upload cache
@@ -551,6 +689,7 @@ sub ArticleQuote {
                 Text => $AttachmentHTML{Content},
                 From => $Charset,
                 To   => $Self->{UserCharset},
+                Check => 1,
             );
 
             # get HTML utils object
@@ -853,6 +992,14 @@ sub TicketListShow {
         }
     }
 
+    # get layout object
+    my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
+
+    $LayoutObject->AddJSData(
+        Key   => 'View',
+        Value => $View,
+    );
+
     # load overview backend module
     if ( !$Kernel::OM->Get('Kernel::System::Main')->Require( $Backends->{$View}->{Module} ) ) {
         return $Env->{LayoutObject}->FatalError();
@@ -937,6 +1084,10 @@ sub TicketListShow {
         $Self->Block(
             Name => 'OverviewNavBarPageBack',
             Data => \%Param,
+        );
+        $LayoutObject->AddJSData(
+            Key   => 'Profile',
+            Value => $Param{Profile},
         );
     }
 
@@ -1056,6 +1207,20 @@ sub TicketListShow {
                 my @ColumnsEnabled = @{ $Object->{ColumnsEnabled} };
                 my @ColumnsAvailable;
 
+                # remove duplicate columns
+                my %UniqueColumns;
+                my @ColumnsEnabledAux;
+
+                for my $Column (@ColumnsEnabled) {
+                    if ( !$UniqueColumns{$Column} ) {
+                        push @ColumnsEnabledAux, $Column;
+                    }
+                    $UniqueColumns{$Column} = 1;
+                }
+
+                # set filtered column list
+                @ColumnsEnabled = @ColumnsEnabledAux;
+
                 for my $ColumnName ( sort { $a cmp $b } @{ $Object->{ColumnsAvailable} } ) {
                     if ( !grep { $_ eq $ColumnName } @ColumnsEnabled ) {
                         push @ColumnsAvailable, $ColumnName;
@@ -1074,7 +1239,7 @@ sub TicketListShow {
                         ColumnsEnabled   => $JSONObject->Encode( Data => \@ColumnsEnabled ),
                         ColumnsAvailable => $JSONObject->Encode( Data => \@ColumnsAvailable ),
                         NamePref         => $PrefKeyColumns,
-                        Desc             => 'Shown Columns',
+                        Desc             => Translatable('Shown Columns'),
                         Name             => $Env->{Action},
                         View             => $View,
                         GroupName        => 'TicketOverviewFilterSettings',
@@ -1205,7 +1370,7 @@ sub TicketMetaItems {
             $Image = 'meta-new.png';
             push @Result, {
                 Image      => $Image,
-                Title      => 'Unread article(s) available',
+                Title      => Translatable('Unread article(s) available'),
                 Class      => 'UnreadArticles',
                 ClassSpan  => 'UnreadArticles Remarkable',
                 ClassTable => 'UnreadArticles',
@@ -1214,7 +1379,7 @@ sub TicketMetaItems {
         else {
             push @Result, {
                 Image      => $Image,
-                Title      => 'Unread article(s) available',
+                Title      => Translatable('Unread article(s) available'),
                 Class      => 'UnreadArticles',
                 ClassSpan  => 'UnreadArticles Ordinary',
                 ClassTable => 'UnreadArticles',
@@ -1226,8 +1391,6 @@ sub TicketMetaItems {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

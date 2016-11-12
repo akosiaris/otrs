@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -18,6 +18,18 @@ $Kernel::OM->Get('Kernel::Config')->Set(
     Key   => 'SendmailModule',
     Value => 'Kernel::System::Email::DoNotSendEmail',
 );
+
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper   = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+my $RandomID = $Helper->GetRandomID();
+
+# freeze time
+$Helper->FixedTimeSet();
 
 # web service config
 my $WebserviceConfig = {
@@ -39,13 +51,6 @@ my $WebserviceConfig = {
         },
     },
 };
-
-# get helper object
-my $HelperObject = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
-my $RandomID     = $HelperObject->GetRandomID();
-
-# freeze time
-$HelperObject->FixedTimeSet();
 
 # get web service object
 my $WebserviceObject = $Kernel::OM->Get('Kernel::System::GenericInterface::Webservice');
@@ -337,15 +342,6 @@ for my $Test (@Test) {
     }
 }
 
-# delete web service config
-my $Success = $WebserviceObject->WebserviceDelete(
-    ID     => $WebserviceID,
-    UserID => 1,
-);
-
-$Self->True(
-    $Success,
-    "WebserviceDelete()",
-);
+# cleanup is done by RestoreDatabase.
 
 1;

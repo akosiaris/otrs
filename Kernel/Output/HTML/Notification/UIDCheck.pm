@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -8,25 +8,16 @@
 
 package Kernel::Output::HTML::Notification::UIDCheck;
 
+use base 'Kernel::Output::HTML::Base';
+
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our @ObjectDependencies = (
     'Kernel::Output::HTML::Layout'
 );
-
-sub new {
-    my ( $Type, %Param ) = @_;
-
-    # allocate new hash for object
-    my $Self = {};
-    bless( $Self, $Type );
-
-    # get UserID param
-    $Self->{UserID} = $Param{UserID} || die "Got no UserID!";
-
-    return $Self;
-}
 
 sub Run {
     my ( $Self, %Param ) = @_;
@@ -41,10 +32,9 @@ sub Run {
     return $LayoutObject->Notify(
         Priority => 'Error',
         Link     => $LayoutObject->{Baselink} . 'Action=AdminUser',
-        Data =>
-            $LayoutObject->{LanguageObject}->Translate(
-            "Don't use the Superuser account to work with OTRS! Create new Agents and work with these accounts instead."
-            ),
+        Info     => Translatable(
+            'Don\'t use the Superuser account to work with OTRS! Create new Agents and work with these accounts instead.'
+        ),
     );
 }
 

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -19,38 +19,31 @@ $Selenium->RunTest(
     sub {
 
         # get helper object
-        $Kernel::OM->ObjectParamAdd(
-            'Kernel::System::UnitTest::Helper' => {
-                RestoreSystemConfiguration => 1,
-            },
-        );
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        $Kernel::OM->Get('Kernel::Config')->Set(
+        # disable check email addresses
+        $Helper->ConfigSettingChange(
             Key   => 'CheckEmailAddresses',
             Value => 0,
         );
 
-        # get sysconfig object
-        my $SysConfigObject = $Kernel::OM->Get('Kernel::System::SysConfig');
-
         # do not check RichText
-        $SysConfigObject->ConfigItemUpdate(
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'Frontend::RichText',
-            Value => 0
+            Value => 0,
         );
 
         # do not check service and type
-        $SysConfigObject->ConfigItemUpdate(
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'Ticket::Service',
-            Value => 0
+            Value => 0,
         );
-        $SysConfigObject->ConfigItemUpdate(
+        $Helper->ConfigSettingChange(
             Valid => 1,
             Key   => 'Ticket::Type',
-            Value => 0
+            Value => 0,
         );
 
         # create test user and login
@@ -64,8 +57,11 @@ $Selenium->RunTest(
             Password => $TestUserLogin,
         );
 
+        # get script alias
         my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
-        $Selenium->get("${ScriptAlias}index.pl?Action=AgentTicketEmail");
+
+        # navigate to AgentTicketEmail screen
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AgentTicketEmail");
 
         # check page
         for my $ID (
@@ -81,7 +77,7 @@ $Selenium->RunTest(
         # check client side validation
         my $Element = $Selenium->find_element( "#Subject", 'css' );
         $Element->send_keys("");
-        $Element->submit();
+        $Element->VerifiedSubmit();
 
         $Self->Is(
             $Selenium->execute_script(
@@ -91,7 +87,8 @@ $Selenium->RunTest(
             'Client side validation correctly detected missing input value',
         );
 
-        $Selenium->get("${ScriptAlias}index.pl?Action=AgentTicketEmail");
+        # navigate to AgentTicketEmail screen again
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AgentTicketEmail");
 
         # get test user ID
         my $TestUserID = $Kernel::OM->Get('Kernel::System::User')->UserLookup(
@@ -99,8 +96,8 @@ $Selenium->RunTest(
         );
 
         # add test customer for testing
-        my $TestCustomer = 'Customer' . $Helper->GetRandomID();
-        my $UserLogin    = $Kernel::OM->Get('Kernel::System::CustomerUser')->CustomerUserAdd(
+        my $TestCustomer       = 'Customer' . $Helper->GetRandomID();
+        my $TestCustomerUserID = $Kernel::OM->Get('Kernel::System::CustomerUser')->CustomerUserAdd(
             Source         => 'CustomerUser',
             UserFirstname  => $TestCustomer,
             UserLastname   => $TestCustomer,
@@ -109,6 +106,10 @@ $Selenium->RunTest(
             UserEmail      => "$TestCustomer\@localhost.com",
             ValidID        => 1,
             UserID         => $TestUserID,
+        );
+        $Self->True(
+            $TestCustomerUserID,
+            "CustomerUserAdd - $TestCustomerUserID"
         );
 
         # create test email ticket
@@ -120,14 +121,12 @@ $Selenium->RunTest(
 
         $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("li.ui-menu-item:visible").length' );
 
-        $Selenium->find_element("//*[text()='$AutoCompleteString']")->click();
+        $Selenium->find_element("//*[text()='$AutoCompleteString']")->VerifiedClick();
         $Selenium->find_element( "#Subject",  'css' )->send_keys($TicketSubject);
         $Selenium->find_element( "#RichText", 'css' )->send_keys($TicketBody);
-        $Selenium->find_element( "#Subject",  'css' )->submit();
+        $Selenium->find_element( "#Subject",  'css' )->VerifiedSubmit();
 
-        # Wait until form has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("form").length' );
-
+        # get created test ticket data
         my %TicketIDs = $Kernel::OM->Get('Kernel::System::Ticket')->TicketSearch(
             Result         => 'HASH',
             Limit          => 1,
@@ -138,30 +137,30 @@ $Selenium->RunTest(
 
         $Self->True(
             $TicketID,
-            "Ticket created"
+            "Ticket was created and found - $TicketID",
         ) || die;
 
         $Self->True(
-            index( $Selenium->get_page_source(), $TicketNumber ) > -1,
-            "Ticket with ticket id $TicketID is created"
+            $Selenium->find_element("//a[contains(\@href, \'Action=AgentTicketZoom;TicketID=$TicketID' )]"),
+            "Ticket with ticket number $TicketNumber is created",
         );
 
         # go to ticket zoom page of created test ticket
-        $Selenium->find_element("//a[contains(\@href, \'Action=AgentTicketZoom' )]")->click();
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AgentTicketZoom;TicketID=$TicketID");
 
         # check if test ticket values are genuine
         $Self->True(
             index( $Selenium->get_page_source(), $TicketSubject ) > -1,
             "$TicketSubject found on page",
-        );
+        ) || die "$TicketSubject not found on page";
         $Self->True(
             index( $Selenium->get_page_source(), $TicketBody ) > -1,
             "$TicketBody found on page",
-        );
+        ) || die "$TicketBody not found on page";
         $Self->True(
             index( $Selenium->get_page_source(), $TestCustomer ) > -1,
             "$TestCustomer found on page",
-        );
+        ) || die "$TestCustomer not found on page";
 
         # delete created test ticket
         my $Success = $Kernel::OM->Get('Kernel::System::Ticket')->TicketDelete(
@@ -170,7 +169,7 @@ $Selenium->RunTest(
         );
         $Self->True(
             $Success,
-            "Ticket with ticket id $TicketID is deleted"
+            "Ticket with ticket ID $TicketID is deleted",
         );
 
         # delete created test customer user
@@ -185,9 +184,15 @@ $Selenium->RunTest(
             "Delete customer user - $TestCustomer",
         );
 
-        # make sure the cache is correct.
-        $Kernel::OM->Get('Kernel::System::Cache')->CleanUp( Type => 'Ticket' );
-        $Kernel::OM->Get('Kernel::System::Cache')->CleanUp( Type => 'CustomerUser' );
+        # make sure the cache is correct
+        for my $Cache (
+            qw (Ticket CustomerUser)
+            )
+        {
+            $Kernel::OM->Get('Kernel::System::Cache')->CleanUp(
+                Type => $Cache,
+            );
+        }
 
     }
 );

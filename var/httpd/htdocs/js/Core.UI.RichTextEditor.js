@@ -1,5 +1,5 @@
 // --
-// Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+// Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 // --
 // This software comes with ABSOLUTELY NO WARRANTY. For details, see
 // the enclosed file COPYING for license information (AGPL). If you
@@ -56,7 +56,7 @@ Core.UI.RichTextEditor = (function (TargetNS) {
     }
 
     /**
-     * @name Init
+     * @name InitEditor
      * @memberof Core.UI.RichTextEditor
      * @function
      * @returns {Boolean} Returns false on error.
@@ -64,11 +64,15 @@ Core.UI.RichTextEditor = (function (TargetNS) {
      * @description
      *      This function initializes the application and executes the needed functions.
      */
-    TargetNS.Init = function ($EditorArea) {
+    TargetNS.InitEditor = function ($EditorArea) {
         var EditorID = '',
             Editor,
             UserLanguage,
             UploadURL = '';
+
+        if (typeof CKEDITOR === 'undefined') {
+            return false;
+        }
 
         if (isJQueryObject($EditorArea) && $EditorArea.hasClass('HasCKEInstance')) {
             return false;
@@ -140,7 +144,7 @@ Core.UI.RichTextEditor = (function (TargetNS) {
             forcePasteAsPlainText: false,
             format_tags: 'p;h1;h2;h3;h4;h5;h6;pre',
             fontSize_sizes: '8px;10px;12px;16px;18px;20px;22px;24px;26px;28px;30px;',
-            extraAllowedContent: 'div[type]{*}; col[width]; style[*]{*}; *[id](*)',
+            extraAllowedContent: 'div[type]{*}; img[*]; col[width]; style[*]{*}; *[id](*)',
             enterMode: CKEDITOR.ENTER_BR,
             shiftEnterMode: CKEDITOR.ENTER_BR,
             contentsLangDirection: Core.Config.Get('RichText.TextDir', 'ltr'),
@@ -148,7 +152,7 @@ Core.UI.RichTextEditor = (function (TargetNS) {
             toolbar: CheckFormID().length ? Core.Config.Get('RichText.Toolbar') : Core.Config.Get('RichText.ToolbarWithoutImage'),
             filebrowserBrowseUrl: '',
             filebrowserUploadUrl: UploadURL,
-            extraPlugins: Core.Config.Get('RichText.SpellChecker') ? 'aspell,splitquote' : 'splitquote',
+            extraPlugins: Core.Config.Get('RichText.SpellChecker') ? 'aspell,splitquote,preventimagepaste' : 'splitquote,preventimagepaste',
             entities: false,
             skin: 'bootstrapck'
         });
@@ -213,16 +217,35 @@ Core.UI.RichTextEditor = (function (TargetNS) {
     };
 
     /**
-     * @name InitAll
+     * @name InitAllEditors
      * @memberof Core.UI.RichTextEditor
      * @function
      * @description
      *      This function initializes as a rich text editor every textarea element that containing the RichText class.
      */
-    TargetNS.InitAll = function () {
+    TargetNS.InitAllEditors = function () {
+        if (typeof CKEDITOR === 'undefined') {
+            return;
+        }
+
         $('textarea.RichText').each(function () {
-            TargetNS.Init($(this));
+            TargetNS.InitEditor($(this));
         });
+    };
+
+    /**
+     * @name Init
+     * @memberof Core.UI.RichTextEditor
+     * @function
+     * @description
+     *      This function initializes JS functionality.
+     */
+    TargetNS.Init = function () {
+        if (typeof CKEDITOR === 'undefined') {
+            return;
+        }
+
+        TargetNS.InitAllEditors();
     };
 
     /**
@@ -321,6 +344,8 @@ Core.UI.RichTextEditor = (function (TargetNS) {
             $EditorArea.focus();
         }
     };
+
+    Core.Init.RegisterNamespace(TargetNS, 'APP_MODULE');
 
     return TargetNS;
 }(Core.UI.RichTextEditor || {}));

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -56,12 +56,13 @@ sub Run {
     # get time object
     my $TimeObject = $Kernel::OM->Get('Kernel::System::Time');
 
-    # do not trigger escalation start events outside busincess hours
+    # do not trigger escalation start events outside business hours
     my $CountedTime = $TimeObject->WorkingTime(
         StartTime => $TimeObject->SystemTime() - ( 10 * 60 ),
         StopTime  => $TimeObject->SystemTime(),
         Calendar  => $Calendar,
     );
+
     if ( !$CountedTime ) {
 
         if ( $Self->{Debug} ) {

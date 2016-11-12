@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,8 +11,6 @@ package Kernel::System::Stats::Static::StateAction;
 
 use strict;
 use warnings;
-
-use Time::Piece;
 
 our @ObjectDependencies = (
     'Kernel::Language',
@@ -93,34 +91,34 @@ sub Run {
     my @PossibleStates;
     for my $StateID ( sort { $States{$a} cmp $States{$b} } keys %States ) {
         $States{$StateID} = $LanguageObject->Translate( $States{$StateID} );
-        $States{$StateID} =~ s/^(.{18}).*$/$1\.\.\./;
         push @PossibleStates, $States{$StateID};
     }
 
     # build x axis
 
     # first take epoch for 12:00 on the 1st of given month
-    # create Time::Piece object for this time
-    my $SystemTime = $Kernel::OM->Get('Kernel::System::Time')->Date2SystemTime(
-        Year   => $Param{Year},
-        Month  => $Param{Month},
-        Day    => 1,
-        Hour   => 12,
-        Minute => 0,
-        Second => 0,
+    my $DateTimeObject = $Kernel::OM->Create(
+        'Kernel::System::DateTime',
+        ObjectParams => {
+            Year   => $Param{Year},
+            Month  => $Param{Month},
+            Day    => 1,
+            Hour   => 12,
+            Minute => 0,
+            Second => 0,
+        },
     );
-
-    my $TimePiece = localtime($SystemTime);    ## no critic
+    my $DateTimeValues = $DateTimeObject->Get();
 
     my @Data;
     my @Days      = ();
     my %StateDate = ();
 
     # execute for all days of this month
-    while ( $TimePiece->mon() == $Param{Month} ) {
+    while ( $DateTimeValues->{Month} == int $Param{Month} ) {
 
         # x-label is of format 'Mon 1, Tue 2,' etc
-        my $Text = $LanguageObject->Translate( $TimePiece->wdayname() ) . ' ' . $TimePiece->mday();
+        my $Text = $LanguageObject->Translate( $DateTimeValues->{DayAbbr} ) . ' ' . $DateTimeValues->{Day};
 
         push @Days, $Text;
         my @Row = ();
@@ -128,7 +126,7 @@ sub Run {
             my $Count = $Self->_GetDBDataPerDay(
                 Year    => $Year,
                 Month   => $Month,
-                Day     => $TimePiece->mday(),
+                Day     => $DateTimeValues->{Day},
                 StateID => $StateID,
             );
             push @Row, $Count;
@@ -137,7 +135,8 @@ sub Run {
         }
 
         # move to next day
-        $TimePiece += ( 3600 * 24 );
+        $DateTimeObject->Add( Days => 1 );
+        $DateTimeValues = $DateTimeObject->Get();
     }
     for my $StateID ( sort { $States{$a} cmp $States{$b} } keys %States ) {
         my @Row = ( $States{$StateID} );

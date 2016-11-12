@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -71,7 +71,9 @@ sub Run {
     elsif ( $Self->{Subaction} eq 'Update' ) {
         my %Data = $PostMasterFilter->FilterGet( Name => $Name );
         if ( !%Data ) {
-            return $LayoutObject->ErrorScreen( Message => "No such filter: $Name" );
+            return $LayoutObject->ErrorScreen(
+                Message => $LayoutObject->{LanguageObject}->Translate( 'No such filter: %s', $Name ),
+            );
         }
         return $Self->_MaskUpdate(
             Name => $Name,
@@ -92,12 +94,12 @@ sub Run {
         my %Not;
 
         for my $Number ( 1 .. $ConfigObject->Get('PostmasterHeaderFieldCount') ) {
-            if ( $GetParam{"MatchHeader$Number"} && $GetParam{"MatchValue$Number"} ) {
+            if ( $GetParam{"MatchHeader$Number"} && length $GetParam{"MatchValue$Number"} ) {
                 $Match{ $GetParam{"MatchHeader$Number"} } = $GetParam{"MatchValue$Number"};
                 $Not{ $GetParam{"MatchHeader$Number"} }   = $GetParam{"MatchNot$Number"};
             }
 
-            if ( $GetParam{"SetHeader$Number"} && $GetParam{"SetValue$Number"} ) {
+            if ( $GetParam{"SetHeader$Number"} && length $GetParam{"SetValue$Number"} ) {
                 $Set{ $GetParam{"SetHeader$Number"} } = $GetParam{"SetValue$Number"};
             }
         }
@@ -122,7 +124,7 @@ sub Run {
             my $InvalidCount = 0;
             for my $SetKey ( sort keys %Set ) {
                 $InvalidCount++;
-                if ( !defined $Set{$SetKey} ) {
+                if ( !length $Set{$SetKey} ) {
                     $Errors{"SetHeader${InvalidCount}Invalid"} = 'ServerError';
                     $Errors{"SetValue${InvalidCount}Invalid"}  = 'ServerError';
                 }
@@ -159,6 +161,17 @@ sub Run {
             StopAfterMatch => $StopAfterMatch,
             Not            => \%Not,
         );
+
+        # if the user would like to continue editing the postmaster filter, just redirect to the update screen
+        if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+            return $LayoutObject->Redirect( OP => "Action=$Self->{Action};Subaction=Update;Name=$Name" );
+        }
+        else {
+
+            # otherwise return to overview
+            return $LayoutObject->Redirect( OP => "Action=$Self->{Action}" );
+        }
+
         return $LayoutObject->Redirect( OP => "Action=$Self->{Action}" );
     }
 
@@ -174,6 +187,7 @@ sub Run {
         );
         $LayoutObject->Block( Name => 'ActionList' );
         $LayoutObject->Block( Name => 'ActionAdd' );
+        $LayoutObject->Block( Name => 'Filter' );
 
         $LayoutObject->Block(
             Name => 'OverviewResult',
@@ -214,7 +228,7 @@ sub _MaskUpdate {
     my $Counter = 0;
     if ( $Data{Match} ) {
         for my $MatchKey ( sort keys %{ $Data{Match} } ) {
-            if ( $MatchKey && $Data{Match}->{$MatchKey} ) {
+            if ( $MatchKey && length $Data{Match}->{$MatchKey} ) {
                 $Counter++;
                 $Data{"MatchValue$Counter"}  = $Data{Match}->{$MatchKey};
                 $Data{"MatchHeader$Counter"} = $MatchKey;
@@ -225,7 +239,7 @@ sub _MaskUpdate {
     $Counter = 0;
     if ( $Data{Set} ) {
         for my $SetKey ( sort keys %{ $Data{Set} } ) {
-            if ( $SetKey && $Data{Set}->{$SetKey} ) {
+            if ( $SetKey && length $Data{Set}->{$SetKey} ) {
                 $Counter++;
                 $Data{"SetValue$Counter"}  = $Data{Set}->{$SetKey};
                 $Data{"SetHeader$Counter"} = $SetKey;
@@ -238,7 +252,13 @@ sub _MaskUpdate {
     my $Output = $LayoutObject->Header();
     $Output .= $LayoutObject->NavigationBar();
 
-    $LayoutObject->Block( Name => 'Overview' );
+    $LayoutObject->Block(
+        Name => 'Overview',
+        Data => {
+            Action => $Self->{Subaction},
+            Name   => $Param{Name},
+        },
+    );
     $LayoutObject->Block( Name => 'ActionList' );
     $LayoutObject->Block( Name => 'ActionOverview' );
 
@@ -307,16 +327,9 @@ sub _MaskUpdate {
         Data => {
             %Param, %Data,
             OldName => $Data{Name},
+            Action  => $Self->{Subaction},
         },
     );
-
-    # shows header
-    if ( $Self->{Subaction} eq 'AddAction' ) {
-        $LayoutObject->Block( Name => 'HeaderAdd' );
-    }
-    else {
-        $LayoutObject->Block( Name => 'HeaderEdit' );
-    }
 
     $Output .= $LayoutObject->Output(
         TemplateFile => 'AdminPostMasterFilter',

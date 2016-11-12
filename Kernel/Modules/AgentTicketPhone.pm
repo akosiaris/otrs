@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -15,6 +15,7 @@ use warnings;
 use Mail::Address;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -101,7 +102,12 @@ sub Run {
                 my $CustomerDisabled = '';
 
                 if ( !$IsUpload ) {
-                    $GetParam{From} .= $CustomerElement . ',';
+                    if ( $GetParam{From} ) {
+                        $GetParam{From} .= ', ' . $CustomerElement;
+                    }
+                    else {
+                        $GetParam{From} = $CustomerElement;
+                    }
 
                     # check email address
                     for my $Email ( Mail::Address->parse($CustomerElement) ) {
@@ -158,7 +164,7 @@ sub Run {
     for my $DynamicFieldConfig ( @{ $Self->{DynamicField} } ) {
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         $DynamicFieldValues{ $DynamicFieldConfig->{Name} } = $DynamicFieldBackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
             ParamObject        => $ParamObject,
@@ -194,7 +200,7 @@ sub Run {
     if ( $GetParam{FromChatID} ) {
         if ( !$ConfigObject->Get('ChatEngine::Active') ) {
             return $LayoutObject->FatalError(
-                Message => "Chat is not active.",
+                Message => Translatable('Chat is not active.'),
             );
         }
 
@@ -208,7 +214,7 @@ sub Run {
 
         if ( !%ChatParticipant ) {
             return $LayoutObject->FatalError(
-                Message => "No permission.",
+                Message => Translatable('No permission.'),
             );
         }
 
@@ -221,7 +227,8 @@ sub Run {
         # Check if observer
         if ( $PermissionLevel ne 'Owner' && $PermissionLevel ne 'Participant' ) {
             return $LayoutObject->FatalError(
-                Message => "No permission. $PermissionLevel",
+                Message => Translatable('No permission.'),
+                Comment => $PermissionLevel,
             );
         }
     }
@@ -277,7 +284,7 @@ sub Run {
 
             if ( !$Access ) {
                 return $LayoutObject->NoPermission(
-                    Message    => "You need ro permission!",
+                    Message    => Translatable('You need ro permission!'),
                     WithHeader => 'yes',
                 );
             }
@@ -290,7 +297,8 @@ sub Run {
             # check if article is from the same TicketID as we checked permissions for.
             if ( $Article{TicketID} ne $Self->{TicketID} ) {
                 return $LayoutObject->ErrorScreen(
-                    Message => "Article does not belong to ticket $Self->{TicketID}!",
+                    Message => $LayoutObject->{LanguageObject}
+                        ->Translate( 'Article does not belong to ticket %s!', $Self->{TicketID} ),
                 );
             }
 
@@ -302,7 +310,9 @@ sub Run {
             # save article from for addresses list
             $ArticleFrom = $Article{From};
 
-            # if To is present and is no a queue
+            # if To is present
+            # and is no a queue
+            # and also is no a system address
             # set To as article from
             if ( IsStringWithData( $Article{To} ) ) {
                 my %Queues = $QueueObject->QueueList();
@@ -315,9 +325,20 @@ sub Run {
                 }
 
                 my %QueueLookup = reverse %Queues;
-                if ( !defined $QueueLookup{ $Article{To} } ) {
+                my %SystemAddressLookup
+                    = reverse $Kernel::OM->Get('Kernel::System::SystemAddress')->SystemAddressList();
+                my @ArticleFromAddress;
+                my $SystemAddressEmail;
+
+                if ($ArticleFrom) {
+                    @ArticleFromAddress = Mail::Address->parse($ArticleFrom);
+                    $SystemAddressEmail = $ArticleFromAddress[0]->address();
+                }
+
+                if ( !defined $QueueLookup{ $Article{To} } && defined $SystemAddressLookup{$SystemAddressEmail} ) {
                     $ArticleFrom = $Article{To};
                 }
+
             }
 
             # body preparation for plain text processing
@@ -908,8 +929,9 @@ sub Run {
                 if ( !IsHashRefWithData($ValidationResult) ) {
                     return $LayoutObject->ErrorScreen(
                         Message =>
-                            "Could not perform validation on field $DynamicFieldConfig->{Label}!",
-                        Comment => 'Please contact the admin.',
+                            $LayoutObject->{LanguageObject}
+                            ->Translate( 'Could not perform validation on field %s!', $DynamicFieldConfig->{Label} ),
+                        Comment => Translatable('Please contact the administrator.'),
                     );
                 }
 
@@ -1568,7 +1590,7 @@ sub Run {
 
             if ( !$Access ) {
                 return $LayoutObject->NoPermission(
-                    Message    => "You need ro permission!",
+                    Message    => Translatable('You need ro permission!'),
                     WithHeader => 'yes',
                 );
             }
@@ -1918,8 +1940,8 @@ sub Run {
     }
     else {
         return $LayoutObject->ErrorScreen(
-            Message => 'No Subaction!!',
-            Comment => 'Please contact your administrator',
+            Message => Translatable('No Subaction!'),
+            Comment => Translatable('Please contact the administrator.'),
         );
     }
 }
@@ -1989,6 +2011,7 @@ sub _GetUsers {
     # workflow
     my $ACL = $TicketObject->TicketAcl(
         %Param,
+        Action        => $Self->{Action},
         ReturnType    => 'Ticket',
         ReturnSubType => 'Owner',
         Data          => \%ShownUsers,
@@ -2051,6 +2074,7 @@ sub _GetResponsibles {
     # workflow
     my $ACL = $TicketObject->TicketAcl(
         %Param,
+        Action        => $Self->{Action},
         ReturnType    => 'Ticket',
         ReturnSubType => 'Responsible',
         Data          => \%ShownUsers,
@@ -2165,12 +2189,7 @@ sub _GetTos {
             );
         }
         else {
-            %Tos = $Kernel::OM->Get('Kernel::System::DB')->GetTableData(
-                Table => 'system_address',
-                What  => 'queue_id, id',
-                Valid => 1,
-                Clamp => 1,
-            );
+            %Tos = $Kernel::OM->Get('Kernel::System::SystemAddress')->SystemAddressQueueList();
         }
 
         # get create permission queues
@@ -2259,9 +2278,13 @@ sub _MaskPhoneNew {
     # get layout object
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
 
-    # build customer search autocomplete field
-    $LayoutObject->Block(
-        Name => 'CustomerSearchAutoComplete',
+    # set JS data
+    $LayoutObject->AddJSData(
+        Key   => 'CustomerSearch',
+        Value => {
+            ShowCustomerTickets => $ConfigObject->Get('Ticket::Frontend::ShowCustomerTickets'),
+            AllowMultipleFrom   => $ConfigObject->Get('Ticket::Frontend::AgentTicketPhone::AllowMultipleFrom'),
+        },
     );
 
     # build string
@@ -2343,9 +2366,13 @@ sub _MaskPhoneNew {
         )
     {
         $ShowErrors = 0;
-        $LayoutObject->Block(
-            Name => 'FromExternalCustomer',
-            Data => $Param{FromExternalCustomer},
+        $LayoutObject->AddJSData(
+            Key   => 'FromExternalCustomerName',
+            Value => $Param{FromExternalCustomer}->{Customer},
+        );
+        $LayoutObject->AddJSData(
+            Key   => 'FromExternalCustomerEmail',
+            Value => $Param{FromExternalCustomer}->{Email},
         );
     }
     my $CustomerCounter = 0;
@@ -2398,12 +2425,11 @@ sub _MaskPhoneNew {
         OnlyDynamicFields => 1
     );
 
-    # create a string with the quoted dynamic field names separated by commas
-    if ( IsArrayRefWithData($DynamicFieldNames) ) {
-        for my $Field ( @{$DynamicFieldNames} ) {
-            $Param{DynamicFieldNamesStrg} .= ",'" . $Field . "'";
-        }
-    }
+    # send data to JS
+    $LayoutObject->AddJSData(
+        Key   => 'DynamicFieldNames',
+        Value => $DynamicFieldNames,
+    );
 
     # build type string
     if ( $ConfigObject->Get('Ticket::Type') ) {
@@ -2425,73 +2451,46 @@ sub _MaskPhoneNew {
     # build service string
     if ( $ConfigObject->Get('Ticket::Service') ) {
 
-        if ( $Config->{ServiceMandatory} ) {
-            $Param{ServiceStrg} = $LayoutObject->BuildSelection(
-                Data         => $Param{Services},
-                Name         => 'ServiceID',
-                Class        => 'Validate_Required Modernize ' . ( $Param{Errors}->{ServiceInvalid} || ' ' ),
-                SelectedID   => $Param{ServiceID},
-                PossibleNone => 1,
-                TreeView     => $TreeView,
-                Sort         => 'TreeView',
-                Translation  => 0,
-                Max          => 200,
-            );
-            $LayoutObject->Block(
-                Name => 'TicketServiceMandatory',
-                Data => {%Param},
-            );
-        }
-        else {
-            $Param{ServiceStrg} = $LayoutObject->BuildSelection(
-                Data         => $Param{Services},
-                Name         => 'ServiceID',
-                Class        => 'Modernize ' . ( $Param{Errors}->{ServiceInvalid} || ' ' ),
-                SelectedID   => $Param{ServiceID},
-                PossibleNone => 1,
-                TreeView     => $TreeView,
-                Sort         => 'TreeView',
-                Translation  => 0,
-                Max          => 200,
-            );
-            $LayoutObject->Block(
-                Name => 'TicketService',
-                Data => {%Param},
-            );
-        }
+        $Param{ServiceStrg} = $LayoutObject->BuildSelection(
+            Data  => $Param{Services},
+            Name  => 'ServiceID',
+            Class => 'Modernize '
+                . ( $Config->{ServiceMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{Errors}->{ServiceIDInvalid} || '' ),
+            SelectedID   => $Param{ServiceID},
+            PossibleNone => 1,
+            TreeView     => $TreeView,
+            Sort         => 'TreeView',
+            Translation  => 0,
+            Max          => 200,
+        );
+        $LayoutObject->Block(
+            Name => 'TicketService',
+            Data => {
+                ServiceMandatory => $Config->{ServiceMandatory} || 0,
+                %Param,
+            },
+        );
 
-        if ( $Config->{SLAMandatory} ) {
-            $Param{SLAStrg} = $LayoutObject->BuildSelection(
-                Data         => $Param{SLAs},
-                Name         => 'SLAID',
-                SelectedID   => $Param{SLAID},
-                Class        => 'Validate_Required Modernize ' . ( $Param{Errors}->{SLAInvalid} || ' ' ),
-                PossibleNone => 1,
-                Sort         => 'AlphanumericValue',
-                Translation  => 0,
-                Max          => 200,
-            );
-            $LayoutObject->Block(
-                Name => 'TicketSLAMandatory',
-                Data => {%Param},
-            );
-        }
-        else {
-            $Param{SLAStrg} = $LayoutObject->BuildSelection(
-                Data         => $Param{SLAs},
-                Name         => 'SLAID',
-                SelectedID   => $Param{SLAID},
-                Class        => 'Modernize',
-                PossibleNone => 1,
-                Sort         => 'AlphanumericValue',
-                Translation  => 0,
-                Max          => 200,
-            );
-            $LayoutObject->Block(
-                Name => 'TicketSLA',
-                Data => {%Param},
-            );
-        }
+        $Param{SLAStrg} = $LayoutObject->BuildSelection(
+            Data       => $Param{SLAs},
+            Name       => 'SLAID',
+            SelectedID => $Param{SLAID},
+            Class      => 'Modernize '
+                . ( $Config->{SLAMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{Errors}->{SLAInvalid} || '' ),
+            PossibleNone => 1,
+            Sort         => 'AlphanumericValue',
+            Translation  => 0,
+            Max          => 200,
+        );
+        $LayoutObject->Block(
+            Name => 'TicketSLA',
+            Data => {
+                SLAMandatory => $Config->{SLAMandatory} || 0,
+                %Param
+            },
+        );
     }
 
     # check if exists create templates regardless the queue
@@ -2705,8 +2704,8 @@ sub _MaskPhoneNew {
         $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
         $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-        $LayoutObject->Block(
-            Name => 'RichText',
+        # set up rich text editor
+        $LayoutObject->SetRichTextParameters(
             Data => \%Param,
         );
     }

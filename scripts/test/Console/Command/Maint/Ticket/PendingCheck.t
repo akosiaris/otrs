@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,11 +12,18 @@ use utf8;
 
 use vars (qw($Self));
 
-my $CommandObject = $Kernel::OM->Get('Kernel::System::Console::Command::Maint::Ticket::PendingCheck');
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-my $TimeObject   = $Kernel::OM->Get('Kernel::System::Time');
-my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
-my $HelperObject = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+# get needed objects
+my $CommandObject = $Kernel::OM->Get('Kernel::System::Console::Command::Maint::Ticket::PendingCheck');
+my $TimeObject    = $Kernel::OM->Get('Kernel::System::Time');
+my $TicketObject  = $Kernel::OM->Get('Kernel::System::Ticket');
 
 my $TicketID = $TicketObject->TicketCreate(
     Title        => 'My ticket created by Agent A',
@@ -52,7 +59,7 @@ my $SystemTime = $TimeObject->TimeStamp2SystemTime(
 );
 
 # set the fixed time
-$HelperObject->FixedTimeSet($SystemTime);
+$Helper->FixedTimeSet($SystemTime);
 
 my $ExitCode = $CommandObject->Execute();
 
@@ -78,7 +85,7 @@ $SystemTime = $TimeObject->TimeStamp2SystemTime(
 );
 
 # set the fixed time
-$HelperObject->FixedTimeSet($SystemTime);
+$Helper->FixedTimeSet($SystemTime);
 
 $ExitCode = $CommandObject->Execute();
 
@@ -98,14 +105,6 @@ $Self->Is(
     "Ticket pending auto closed time reached",
 );
 
-my $Deleted = $TicketObject->TicketDelete(
-    TicketID => $TicketID,
-    UserID   => 1,
-);
-
-$Self->True(
-    $Deleted,
-    "Ticket deleted",
-);
+# cleanup is done by RestoreDatabase
 
 1;

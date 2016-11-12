@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -87,7 +87,7 @@ sub Configure {
     $Self->AddOption(
         Name => 'timezone',
         Description =>
-            "Target time zone (e.g. +2) for which the file should be generated (only provided, if the system use UTC as system time, the TimeZoneUser feature is active and for dynamic statistics).",
+            "Target time zone (e.g. Europe/Berlin) for which the file should be generated.",
         Required   => 0,
         HasValue   => 1,
         ValueRegex => qr/.*/smx,
@@ -165,18 +165,6 @@ sub PreRun {
     $Self->{TargetDirectory} = $Self->GetOption('target-directory');
     if ( $Self->{TargetDirectory} && !-e $Self->{TargetDirectory} ) {
         die "The target directory '$Self->{TargetDirectory}' does not exist.\n";
-    }
-
-    if (
-        $Self->GetOption('timezone')
-        && (
-            $Kernel::OM->Get('Kernel::System::Time')->ServerLocalTimeOffsetSeconds()
-            || !$Kernel::OM->Get('Kernel::Config')->Get('TimeZoneUser')
-        )
-        )
-    {
-        die
-            "You defined a timzone but this is only provided, if the system use UTC as system time and the time zone user support is active.\n";
     }
 
     # set up used language
@@ -260,7 +248,7 @@ sub Run {
 
         # overwrite the default stats timezone with the given timezone
         my $TimeZone = $Self->GetOption('timezone');
-        if ( length $TimeZone ) {
+        if ( defined $TimeZone && length $TimeZone ) {
             $GetParam{TimeZone} = $TimeZone;
         }
     }
@@ -268,10 +256,9 @@ sub Run {
     # run stat...
     my @StatArray = @{
         $Kernel::OM->Get('Kernel::System::Stats')->StatsRun(
-            StatID       => $Self->{StatID},
-            GetParam     => \%GetParam,
-            UserID       => 1,
-            UserLanguage => $Self->{Language},
+            StatID   => $Self->{StatID},
+            GetParam => \%GetParam,
+            UserID   => 1,
         ),
     };
 
@@ -281,6 +268,10 @@ sub Run {
     my $HeadArrayRef   = shift(@StatArray);
     my $CountStatArray = @StatArray;
     my $Time           = sprintf( "%04d-%02d-%02d %02d:%02d:%02d", $Y, $M, $D, $h, $m, $s );
+    my @WithHeader;
+    if ( $Self->GetOption('with-header') ) {
+        @WithHeader = ( "Name: $Title", "Created: $Time" );
+    }
     if ( !@StatArray ) {
         push( @StatArray, [ ' ', 0 ] );
     }
@@ -319,9 +310,10 @@ sub Run {
 
         # Create the Excel data
         my $Output = $Kernel::OM->Get('Kernel::System::CSV')->Array2CSV(
-            Head   => $HeadArrayRef,
-            Data   => \@StatArray,
-            Format => 'Excel',
+            WithHeader => \@WithHeader,
+            Head       => $HeadArrayRef,
+            Data       => \@StatArray,
+            Format     => 'Excel',
         );
 
         # save the Excel with the title and timestamp as filename, or read it from param
@@ -348,9 +340,10 @@ sub Run {
 
         # Create the CSV data
         my $Output = $Kernel::OM->Get('Kernel::System::CSV')->Array2CSV(
-            Head      => $HeadArrayRef,
-            Data      => \@StatArray,
-            Separator => $Self->{Separator},
+            WithHeader => \@WithHeader,
+            Head       => $HeadArrayRef,
+            Data       => \@StatArray,
+            Separator  => $Self->{Separator},
         );
 
         # save the csv with the title and timestamp as filename, or read it from param
@@ -452,15 +445,3 @@ sub GetArray {
 }
 
 1;
-
-=back
-
-=head1 TERMS AND CONDITIONS
-
-This software is part of the OTRS project (L<http://otrs.org/>).
-
-This software comes with ABSOLUTELY NO WARRANTY. For details, see
-the enclosed file COPYING for license information (AGPL). If you
-did not receive this file, see L<http://www.gnu.org/licenses/agpl.txt>.
-
-=cut

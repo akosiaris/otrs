@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -8,6 +8,30 @@
 <!-- start form -->
 <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
     <h1>[% Translate("Generic Agent") | html %]</h1>
+
+    [% BreadcrumbPath = [
+            {
+                Name => Translate('Generic Agent'),
+                Link => Env("Action"),
+            },
+        ]
+    %]
+
+    [% SWITCH Data.Subaction %]
+        [% CASE 'Update' %]
+            [% IF Data.Profile %]
+                [% USE EditJob = String(Translate("Edit job")) %]
+                [% BreadcrumbPath.push({ Name => EditJob.append( ': ', Data.Profile ) }) %]
+            [% ELSE %]
+                [% BreadcrumbPath.push({ Name => Translate("Add job"),}) %]
+            [% END %]
+        [% CASE 'Run' %]
+            [% USE RunJob = String(Translate("Run job")) %]
+            [% BreadcrumbPath.push({ Name => RunJob.append( ': ', Data.Profile ) }) %]
+    [% END %]
+
+    [% INCLUDE "Breadcrumb.tt" Path = BreadcrumbPath %]
+
     <div class="SidebarColumn">
 [% RenderBlockStart("ActionList") %]
         <div class="WidgetSimple">
@@ -30,6 +54,16 @@
             </div>
         </div>
 [% RenderBlockEnd("ActionList") %]
+[% RenderBlockStart("Filter") %]
+        <div class="WidgetSimple">
+            <div class="Header">
+                <h2><label for="FilterGenericAgentJobs">[% Translate("Filter for Generic Agent Jobs") | html %]</label></h2>
+            </div>
+            <div class="Content">
+                <input type="text" id="FilterGenericAgentJobs" class="FilterBox" placeholder="[% Translate("Just start typing to filter...") | html %]" name="FilterGenericAgentJobs" value="" title="[% Translate("Filter for generic agent jobs") | html %]">
+            </div>
+        </div>
+[% RenderBlockEnd("Filter") %]
     </div>
 
     <div class="ContentColumn">
@@ -40,7 +74,7 @@
                 <h2>[% Translate("List") | html %]</h2>
             </div>
             <div class="Content">
-                <table class="DataTable">
+                <table class="DataTable" id="GenericAgentJobs">
                     <thead>
                         <tr>
                             <th>[% Translate("Name") | html %]</th>
@@ -50,15 +84,15 @@
                             <th>[% Translate("Run Now!") | html %]</th>
                         </tr>
                     </thead>
+                    <tbody>
 [% RenderBlockStart("NoDataFoundMsg") %]
-                    <tr>
-                        <td colspan="5">
-                            [% Translate("No data found.") | html %]
-                        </td>
-                    </tr>
+                        <tr>
+                            <td colspan="5">
+                                [% Translate("No data found.") | html %]
+                            </td>
+                        </tr>
 [% RenderBlockEnd("NoDataFoundMsg") %]
 [% RenderBlockStart("Row") %]
-                    <tbody>
                         <tr [% IF Data.Valid != 1%]class="Invalid"[% END %]>
                             <td>
                                 <a class="AsBlock" href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=Update;Profile=[% Data.Name | uri %]">
@@ -80,14 +114,14 @@
                                 [% END %]
                             </td>
                         </tr>
-                    </tbody>
 [% RenderBlockEnd("Row") %]
+                        <tr class="FilterMessage Hidden">
+                            <td colspan="5">[% Translate("No matches found.") | html %]</td>
+                        </tr>
+                    </tbody>
                 </table>
-            </div>
         </div>
 [% RenderBlockEnd("Overview") %]
-
-
 [% RenderBlockStart("Edit") %]
         <form action="[% Env("CGIHandle") %]" method="post" name="compose" class="Validate PreventMultipleSubmits">
             <div class="WidgetSimple">
@@ -99,6 +133,9 @@
                     <input type="hidden" name="Subaction" value="UpdateAction"/>
                     <input type="hidden" name="ScheduleLastRun" value="[% Data.ScheduleLastRun | html %]"/>
                     <input type="hidden" name="OldProfile" value="[% Data.Profile | html %]"/>
+                    [% IF Data.Profile %]
+                        <input type="hidden" name="ContinueAfterSave" id="ContinueAfterSave" value=""/>
+                    [% END %]
                     <fieldset class="TableLike">
                         <label for="Profile" class="Mandatory"><span class="Marker">*</span> [% Translate("Job name") | html %]:</label>
                         <div class="Field">
@@ -129,7 +166,7 @@
                     <div class="WidgetAction Toggle">
                         <a href="#" title="[% Translate("Toggle this widget") | html %]"><i class="fa fa-caret-right"></i><i class="fa fa-caret-down"></i></a>
                     </div>
-                    <h2>[% Translate("Automatic execution (multiple tickets)") | html %]</h2>
+                    <h2>[% Translate("Automatic Execution (Multiple Tickets)") | html %]</h2>
                 </div>
                 <div class="Content">
                     <fieldset class="TableLike">
@@ -172,7 +209,7 @@
                     <div class="WidgetAction Toggle">
                         <a href="#" title="[% Translate("Toggle this widget") | html %]"><i class="fa fa-caret-right"></i><i class="fa fa-caret-down"></i></a>
                     </div>
-                    <h2>[% Translate("Event based execution (single ticket)") | html %]</h2>
+                    <h2>[% Translate("Event Based Execution (Single Ticket)") | html %]</h2>
                 </div>
                 <div class="Content">
                     <fieldset class="TableLike">
@@ -253,22 +290,6 @@
                             </p>
                         </div>
                         <div class="Clear"></div>
-
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-Core.Agent.Admin.GenericAgent.Init({
-    Localization: {
-        DuplicateEventTitle: [% Translate("Duplicate event.") | JSON %],
-        DuplicateEventMsg: [% Translate("This event is already attached to the job, Please use a different one.") | JSON %],
-        DeleteEventMsg: [% Translate("Delete this Event Trigger") | JSON %],
-        DeleteMsg: [% Translate("Delete") | JSON %],
-        CancelMsg: [% Translate("Cancel") | JSON %],
-        RemoveSelection: [% Translate("Remove selection") | JSON %]
-    }
-});
-//]]></script>
-[% END %]
-
                     </fieldset>
                 </div>
             </div>
@@ -306,7 +327,7 @@ Core.Agent.Admin.GenericAgent.Init({
                         </div>
                         <div class="Clear"></div>
 
-                        <label for="CustomerUserLogin">[% Translate("Customer login") | html %]:</label>
+                        <label for="CustomerUserLogin">[% Translate("Customer user") | html %]:</label>
                         <div class="Field">
                             <input type="text" name="CustomerUserLogin" id="CustomerUserLogin" class="W33pc" value="[% Data.CustomerUserLogin | html %]"/>
                             <p class="FieldExplanation">
@@ -689,7 +710,7 @@ Core.Agent.Admin.GenericAgent.Init({
                         </div>
                         <div class="Clear"></div>
 
-                        <label for="NewCustomerUserLogin">[% Translate("New customer") | html %]:</label>
+                        <label for="NewCustomerUserLogin">[% Translate("New customer user") | html %]:</label>
                         <div class="Field">
                             <input type="text" name="NewCustomerUserLogin" id="NewCustomerUserLogin" value="[% Data.NewCustomerUserLogin | html %]" class="W33pc"/>
                         </div>
@@ -761,6 +782,13 @@ Core.Agent.Admin.GenericAgent.Init({
                         </div>
                         <div class="Clear"></div>
 
+[% RenderBlockStart("NewArticleType") %]
+                        <label for="NewArticleType">[% Translate("Type") | html %]:</label>
+                        <div class="Field">
+                            [% Data.NewArticleType %]
+                        </div>
+                        <div class="Clear"></div>
+[% RenderBlockEnd("NewArticleType") %]
                         <label for="NewNoteTimeUnits">[% Translate("Time units") | html %] [% Translate(Config("Ticket::Frontend::TimeUnits")) | html %]:</label>
                         <div class="Field">
                             <input type="text" name="NewNoteTimeUnits" id="NewNoteTimeUnits" value="[% Data.NewNoteTimeUnits | html %]" class="W20pc"/>
@@ -877,10 +905,16 @@ Core.Agent.Admin.GenericAgent.Init({
                 </div>
                 <div class="Content">
                     <fieldset class="TableLike">
-                        <div class="Field SpacingTop">
-                            <button class="Primary CallForAction" type="submit" value="[% Translate("Submit") | html %]"><span>[% Translate("Submit") |  html %]</span></button>
+                        <div class="Field SpacingTop SaveButtons">
+                            [% IF Data.Profile %]
+                                <button class="CallForAction Primary" id="SubmitAndContinue" type="button" value="[% Translate("Save") | html %]"><span>[% Translate("Save") | html %]</span></button>
+                                [% Translate("or") | html %]
+                                <button class="CallForAction Primary" id="Submit" type="submit" value="[% Translate("Save") | html %]"><span>[% Translate("Save and finish") | html %]</span></button>
+                            [% ELSE %]
+                                <button class="CallForAction Primary" id="Submit" type="submit" value="[% Translate("Save") | html %]"><span>[% Translate("Save") | html %]</span></button>
+                            [% END %]
                             [% Translate("or") | html %]
-                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %]">[% Translate("Cancel") | html %]</a>
+                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %]"><span>[% Translate("Cancel") | html %]</span></a>
                         </div>
                         <div class="Clear"></div>
                     </fieldset>
@@ -968,7 +1002,6 @@ Core.Agent.Admin.GenericAgent.Init({
         </div>
 [% RenderBlockEnd("ResultBlock") %]
 [% RenderBlockEnd("Result") %]
-
     </div>
     <div class="Clear"></div>
 </div>

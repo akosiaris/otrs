@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -27,7 +27,7 @@ our @ObjectDependencies = (
 
 Kernel::System::DynamicField::Driver::Text
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 DynamicFields Text Driver delegate
 
@@ -36,9 +36,7 @@ DynamicFields Text Driver delegate
 This module implements the public interface of L<Kernel::System::DynamicField::Backend>.
 Please look there for a detailed reference of the functions.
 
-=over 4
-
-=item new()
+=head2 new()
 
 usually, you want to create an instance of this
 by using Kernel::System::DynamicField::Backend->new();
@@ -104,7 +102,7 @@ sub new {
 sub DisplayValueRender {
     my ( $Self, %Param ) = @_;
 
-    # set HTMLOuput as default if not specified
+    # set HTMLOutput as default if not specified
     if ( !defined $Param{HTMLOutput} ) {
         $Param{HTMLOutput} = 1;
     }
@@ -120,7 +118,7 @@ sub DisplayValueRender {
 
     my $Title = $Value;
 
-    # HTMLOuput transformations
+    # HTMLOutput transformations
     if ( $Param{HTMLOutput} ) {
         $Value = $Param{LayoutObject}->Ascii2Html(
             Text => $Value,
@@ -184,8 +182,6 @@ sub ColumnFilterValuesGet {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

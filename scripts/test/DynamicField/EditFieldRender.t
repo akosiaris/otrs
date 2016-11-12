@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -17,19 +17,19 @@ use Kernel::Output::HTML::Layout;
 use Kernel::System::VariableCheck qw(:all);
 
 # get needed objects
-my $HelperObject    = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+my $Helper          = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 my $DFBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
 my $ParamObject     = $Kernel::OM->Get('Kernel::System::Web::Request');
 my $TimeObject      = $Kernel::OM->Get('Kernel::System::Time');
 
 # use a fixed year to compare the time selection results
-$HelperObject->FixedTimeSet(
+$Helper->FixedTimeSet(
     $TimeObject->TimeStamp2SystemTime( String => '2013-12-12 00:00:00' ),
 );
 
 my $LayoutObject = Kernel::Output::HTML::Layout->new(
     Lang         => 'en',
-    UserTimeZone => '+0',
+    UserTimeZone => 'UTC',
 );
 
 my $UserID = 1;
@@ -1268,7 +1268,7 @@ EOF
         Success => 1,
     },
     {
-        Name   => 'Multiselect: Value direct (multiople)',
+        Name   => 'Multiselect: Value direct (multiple)',
         Config => {
             DynamicFieldConfig => $DynamicFieldConfigs{Multiselect},
             LayoutObject       => $LayoutObject,
@@ -1558,7 +1558,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -1603,7 +1603,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -1723,7 +1723,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -1768,7 +1768,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -1895,7 +1895,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -1940,7 +1940,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2067,7 +2067,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2112,7 +2112,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText DateSelection MyClass" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2233,7 +2233,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass Validate_Required" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass Validate_Required" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText DateSelection MyClass Validate_Required" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2278,7 +2278,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText DateSelection MyClass Validate_Required" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2406,7 +2406,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass ServerError" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Used" value="1" checked="checked" class="DynamicFieldText DateSelection MyClass ServerError" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText DateSelection MyClass ServerError" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2451,7 +2451,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText DateSelection MyClass ServerError" id="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{DateTime}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2578,7 +2578,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2623,7 +2623,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2657,7 +2657,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2702,7 +2702,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2741,7 +2741,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2786,7 +2786,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2827,7 +2827,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2872,7 +2872,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText MyClass" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2907,7 +2907,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass Validate_Required" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass Validate_Required" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText MyClass Validate_Required" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -2952,7 +2952,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText MyClass Validate_Required" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -2994,7 +2994,7 @@ EOF
         },
         ExpectedResults => {
             Field => <<"EOF",
-<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass ServerError" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
+<input type="checkbox" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Used" value="1" checked="checked" class="DynamicFieldText MyClass ServerError" title="Check to activate this date" />&nbsp;<select class="Validate_DateMonth DynamicFieldText MyClass ServerError" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Month" title="Month">
   <option value="1">01</option>
   <option value="2">02</option>
   <option value="3">03</option>
@@ -3039,7 +3039,7 @@ EOF
   <option value="29">29</option>
   <option value="30">30</option>
   <option value="31">31</option>
-</select>/<select class="Validate_DateYear" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
+</select>/<select class="Validate_DateYear DynamicFieldText MyClass ServerError" id="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" name="DynamicField_$DynamicFieldConfigs{Date}->{Name}Year" title="Year">
   <option value="2008">2008</option>
   <option value="2009">2009</option>
   <option value="2010">2010</option>
@@ -3079,7 +3079,7 @@ for my $Test (@Tests) {
 
         if ( IsHashRefWithData( $Test->{Config}->{CGIParam} ) ) {
 
-            # creatate a new CGI object to simulate a web request
+            # create a new CGI object to simulate a web request
             my $WebRequest = CGI->new( $Test->{Config}->{CGIParam} );
 
             my $LocalParamObject = Kernel::System::Web::Request->new(
@@ -3119,4 +3119,5 @@ for my $Test (@Tests) {
 }
 
 # we don't need any cleanup
+
 1;

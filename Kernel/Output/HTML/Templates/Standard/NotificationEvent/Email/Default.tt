@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -177,6 +177,7 @@
                                             <tbody>
                                                 <tr>
                                                     <td valign="top" class="footerContent">
+                                                    [% IF !Config("Secure::DisableBanner") %]
                                                         <table border="0" cellpadding="10" cellspacing="0" width="100%">
                                                             <tbody>
                                                                 <tr>
@@ -188,6 +189,7 @@
                                                                 </tr>
                                                             </tbody>
                                                         </table>
+                                                    [% END %]
                                                     </td>
                                                 </tr>
                                             </tbody>

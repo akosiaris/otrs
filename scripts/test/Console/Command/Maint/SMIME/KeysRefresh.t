@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -14,6 +14,14 @@ use Kernel::System::Crypt::SMIME;
 use File::Copy;
 
 use vars (qw($Self));
+
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
 # get config object
 my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
@@ -166,7 +174,7 @@ $ConfigSet->(
     TestName => 'Init'
 );
 
-my $RandomName = $Kernel::OM->Get('Kernel::System::UnitTest::Helper')->GetRandomID();
+my $RandomName = $Helper->GetRandomID();
 
 my @Tests = (
     {
@@ -406,11 +414,13 @@ for my $Test (@Tests) {
     }
 }
 
-# cleanup
+# remove temporary directory
 $Success = File::Path::rmtree( $Home . '/var/tmp/SMIMETest' );
 $Self->True(
     $Success,
     'Removed temporary Certificates and Private Keys root directory with true',
 );
+
+# cleanup cache is done by RestoreDatabase
 
 1;

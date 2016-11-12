@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -25,28 +25,23 @@ our @ObjectDependencies = (
     'Kernel::System::State',
     'Kernel::System::Ticket',
     'Kernel::System::Time',
+    'Kernel::System::User',
 );
 
 =head1 NAME
 
 Kernel::System::ProcessManagement::TransitionAction::TicketCreate - A module to create a ticket
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All TicketArticleCreate functions.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $TicketCreateObject = $Kernel::OM->Get('Kernel::System::ProcessManagement::TransitionAction::TicketCreate');
 
 =cut
@@ -61,7 +56,7 @@ sub new {
     return $Self;
 }
 
-=item Run()
+=head2 Run()
 
     Run Data
 
@@ -81,7 +76,7 @@ sub new {
             State         => 'new',              # or StateID => 5,
             CustomerID    => '123465',
             CustomerUser  => 'customer@example.com',
-            OwnerID       => 123,
+            Owner         => 'someuserlogin',    # or OwnerID => 123
 
             # ticket optional:
             TN              => $TicketObject->TicketCreateNumber(), # optional
@@ -194,6 +189,13 @@ sub Run {
         if ( !$TicketParam{$Attribute} && !$TicketParam{ $Attribute . "ID" } ) {
             $TicketParam{$Attribute} = $Kernel::OM->Get('Kernel::Config')->Get("Process::Default$Attribute") || '';
         }
+    }
+
+    # Get OwnerID from Owner
+    if ( $TicketParam{Owner} && !$TicketParam{OwnerID} ) {
+        $TicketParam{OwnerID} = $Kernel::OM->Get('Kernel::System::User')->UserLookup(
+            UserLogin => $TicketParam{Owner},
+        );
     }
 
     # get ticket object
@@ -471,8 +473,6 @@ sub Run {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

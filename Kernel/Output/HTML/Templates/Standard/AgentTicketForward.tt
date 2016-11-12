@@ -1,12 +1,11 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
 # did not receive this file, see http://www.gnu.org/licenses/agpl.txt.
 # --
 
-[% InsertTemplate("AgentCustomerSearch.tt") %]
 <form action="[% Env("CGIHandle") %]" method="post" enctype="multipart/form-data" name="Compose" id="Compose" class="Validate PreventMultipleSubmits">
     <input type="hidden" name="Action" value="[% Env("Action") %]"/>
     <input type="hidden" name="Subaction" value="SendEmail"/>
@@ -18,7 +17,7 @@
 
     <div class="LayoutPopup ARIARoleMain">
         <div class="Header">
-            <h1>[% Translate("Forward %s%s", Config('Ticket::Hook'), Data.TicketNumber) | html %] &mdash; [% Data.Title | html %]</h1>
+            <h1>[% Translate("Forward %s%s%s", Config('Ticket::Hook'), Config('Ticket::HookDivider'), Data.TicketNumber) | html %] &mdash; [% Data.Title | html %]</h1>
             <p class="AsteriskExplanation">[% Translate("All fields marked with an asterisk (*) are mandatory.") | html %]</p>
 
 [% RenderBlockStart("TicketBack") %]
@@ -49,12 +48,16 @@
 
                 <label for="ToCustomer" class="Mandatory"><span class="Marker">*</span>[% Translate("To") | html %]:</label>
                 <div class="Field">
-                    <input id="ToCustomer" type="text" name="ToCustomer" value="" class="CustomerAutoComplete W75pc [% Data.ToInvalid | html %]" autocomplete="off" />
+                    <input id="ToCustomer" type="text" name="ToCustomer" value="" class="CustomerAutoComplete W75pc [% Data.ToIsLocalAddress | html %] [% Data.ToInvalid | html %]" autocomplete="off" />
 
                     <div id="ToCustomerServerError" class="TooltipErrorMessage">
 [% RenderBlockStart("ToServerErrorMsg") %]
                         <p>[% Translate("Please include at least one recipient") | html %]</p>
 [% RenderBlockEnd("ToServerErrorMsg") %]
+
+[% RenderBlockStart("ToIsLocalAddressServerErrorMsg") %]
+                    <p>[% Translate("This address is registered as system address and cannot be used: %s", Data.To) | html %]</p>
+[% RenderBlockEnd("ToIsLocalAddressServerErrorMsg") %]
                     </div>
                 </div>
                 <div class="Clear"></div>
@@ -115,18 +118,17 @@
 [% RenderBlockEnd("MultipleCustomerCounter") %]
                 </div>
                 <div class="Clear"></div>
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    $('.CustomerTicketRemove').bind('click', function () {
-        Core.Agent.CustomerSearch.RemoveCustomerTicket( $(this) );
-        return false;
-    });
-//]]></script>
-[% END %]
 
                 <label for="CcCustomer">[% Translate("Cc") | html %]:</label>
                 <div class="Field">
-                    <input id="CcCustomer" type="text" name="CcCustomer" value="" class="CustomerAutoComplete W75pc [% Data.CcInvalid | html %]" autocomplete="off" />
+                    <input id="CcCustomer" type="text" name="CcCustomer" value="" class="CustomerAutoComplete W75pc [% Data.CcIsLocalAddress | html %] [% Data.CcInvalid | html %]" autocomplete="off" />
+
+                    <div id="CcCustomerServerError" class="TooltipErrorMessage">
+[% RenderBlockStart("CcIsLocalAddressServerErrorMsg") %]
+                    <p>[% Translate("This address is registered as system address and cannot be used: %s", Data.Cc) | html %]</p>
+[% RenderBlockEnd("CcIsLocalAddressServerErrorMsg") %]
+                    </div>
+
                 </div>
                 <div class="Clear"></div>
 
@@ -190,7 +192,13 @@
 
                 <label for="BccCustomer">[% Translate("Bcc") | html %]:</label>
                 <div class="Field">
-                    <input id="BccCustomer" type="text" name="BccCustomer" value="" class="CustomerAutoComplete W75pc [% Data.BccInvalid | html %]" autocomplete="off" />
+                    <input id="BccCustomer" type="text" name="BccCustomer" value="" class="CustomerAutoComplete W75pc [% Data.BccIsLocalAddress | html %] [% Data.BccInvalid | html %]" autocomplete="off" />
+
+                    <div id="BccCustomerServerError" class="TooltipErrorMessage">
+[% RenderBlockStart("BccIsLocalAddressServerErrorMsg") %]
+                    <p>[% Translate("This address is registered as system address and cannot be used: %s", Data.Bcc) | html %]</p>
+[% RenderBlockEnd("BccIsLocalAddressServerErrorMsg") %]
+                    </div>
                 </div>
                 <div class="Clear"></div>
 
@@ -265,6 +273,9 @@
                 <div class="Field">
                     [% Data.Value %]
                     <div id="[% Data.Name | html %]ServerError" class="TooltipErrorMessage"><p>[% Data.Invalid | html %]</p></div>
+                    [% IF Data.FieldExplanation.length %]
+                        <p class="FieldExplanation">[% Translate(Data.FieldExplanation) | html %]</p>
+                    [% END %]
                 </div>
                 <div class="Clear"></div>
 [% RenderBlockEnd("Option") %]
@@ -292,9 +303,6 @@
 
                 <label class="Mandatory" for="RichText"><span class="Marker">*</span>[% Translate("Text") | html %]:</label>
                 <div class="RichTextField">
-[% RenderBlockStart("RichText") %]
-[% InsertTemplate("RichTextEditor.tt") %]
-[% RenderBlockEnd("RichText") %]
                     <textarea id="RichText" name="Body" rows="15" cols="[% Config("Ticket::Frontend::TextAreaEmail") %]" class="RichText Validate_Required [% Data.BodyInvalid | html %]">[% Data.Body | html %]</textarea>
                     <div id="RichTextError" class="TooltipErrorMessage"><p>[% Translate("This field is required.") | html %]</p></div>
                     <div id="RichTextServerError" class="TooltipErrorMessage"><p>[% Translate("This field is required.") | html %]</p></div>
@@ -309,16 +317,6 @@
                             [% Data.Filename | html %] ([% Data.Filesize | html %])
                             <button type="button" id="AttachmentDeleteButton[% Data.FileID | html %]" name="AttachmentDeleteButton[% Data.FileID | html %]" value="[% Translate("Delete") | html %]" class="SpacingLeft">[% Translate("Delete") | html %]</button>
                             <input type="hidden" id="AttachmentDelete[% Data.FileID | html %]" name="AttachmentDelete[% Data.FileID | html %]" />
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    $('#AttachmentDeleteButton[% Data.FileID | html %]').bind('click', function () {
-        var $Form = $('#AttachmentDeleteButton[% Data.FileID | html %]').closest('form');
-        $('#AttachmentDelete[% Data.FileID | html %]').val(1);
-        Core.Form.Validate.DisableValidation($Form);
-        $Form.trigger('submit');
-    });
-//]]></script>
-[% END %]
                         </li>
 [% RenderBlockEnd("Attachment") %]
                         <li>
@@ -326,28 +324,12 @@
                             <input type="hidden" id="AttachmentUpload" name="AttachmentUpload" value="0" />
                         </li>
                     </ul>
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    $('#FileUpload').bind('change', function () {
-        var $Form = $('#FileUpload').closest('form');
-        Core.Form.Validate.DisableValidation($Form);
-        $Form.find('#AttachmentUpload').val('1').end().submit();
-    });
-//]]></script>
-[% END %]
                 </div>
                 <div class="Clear"></div>
 
                 <label for="ComposeStateID">[% Translate("Next ticket state") | html %]:</label>
                 <div class="Field">
                     [% Data.NextStatesStrg %]
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    $('#ComposeStateID').bind('change', function (Event) {
-        Core.AJAX.FormUpdate($('#Compose'), 'AJAXUpdate', 'ComposeStateID', [ [% Data.DynamicFieldNamesStrg %] ]);
-    });
-//]]></script>
-[% END %]
                 </div>
                 <div class="Clear"></div>
 
@@ -421,10 +403,3 @@
         </div>
     </div>
 </form>
-
-#Layers
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    Core.Agent.TicketAction.Init();
-//]]></script>
-[% END %]

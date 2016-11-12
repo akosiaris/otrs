@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -22,18 +22,14 @@ our @ObjectDependencies = (
 
 Kernel::System::AsynchronousExecutor - base class to delegate tasks to the OTRS Scheduler Daemon
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 ObjectManager controlled modules can add this base class to execute some time consuming tasks in the
 background using the separate process OTRS Scheduler Daemon.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item AsyncCall()
+=head2 AsyncCall()
 
 creates a scheduler daemon task to execute a function asynchronously.
 
@@ -45,7 +41,7 @@ creates a scheduler daemon task to execute a function asynchronously.
         Attempts                 => 3,                          # optional, default: 1, number of tries to lock the
                                                                 #   task by the scheduler
         MaximumParallelInstances => 1,                          # optional, default: 0 (unlimited), number of same
-                                                                #   function calls form the same object that can be
+                                                                #   function calls from the same object that can be
                                                                 #   executed at the the same time
     );
 
@@ -104,6 +100,14 @@ sub AsyncCall {
         return;
     }
 
+    if ( $Param{FunctionParams} && !ref $Param{FunctionParams} ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "FunctionParams needs to be a hash or list reference.",
+        );
+        return;
+    }
+
     # define the task name with object name and concatenate the function name
     my $TaskName = substr "$ObjectName-$FunctionName()", 0, 255;
 
@@ -116,7 +120,7 @@ sub AsyncCall {
         Data                     => {
             Object   => $ObjectName,
             Function => $FunctionName,
-            Params   => $Param{FunctionParams},
+            Params   => $Param{FunctionParams} // {},
         },
     );
 
@@ -132,8 +136,6 @@ sub AsyncCall {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

@@ -1,5 +1,5 @@
 // --
-// Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+// Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 // --
 // This software comes with ABSOLUTELY NO WARRANTY. For details, see
 // the enclosed file COPYING for license information (AGPL). If you
@@ -119,7 +119,7 @@ Core.Agent.TicketAction = (function (TargetNS) {
         $Element[0].setSelectionRange(Length, Length);
 
         // set customer data for customer user information (AgentTicketEmail) in the compose screen
-        if ($Link.attr('rel') === 'ToCustomer' && Core.Config.Get('CustomerInfoSet')){
+        if ($Link.attr('rel') === 'ToCustomer' && parseInt(Core.Config.Get('CustomerInfoSet'), 10)){
 
             NewData = $('#CustomerData').val();
             NewDataItem = Core.Data.Get($Link.closest('a'), 'customerdatajson');
@@ -169,20 +169,23 @@ Core.Agent.TicketAction = (function (TargetNS) {
      */
     TargetNS.Init = function () {
 
+        // Initialize spell check functionality
+        TargetNS.InitSpellCheck();
+
         // Register event for spell checker dialog
-        $('#OptionSpellCheck').bind('click', function () {
+        $('#OptionSpellCheck').on('click', function () {
             OpenSpellChecker();
             return false;
         });
 
         // Register event for addressbook dialog
-        $('#OptionAddressBook').bind('click', function () {
+        $('#OptionAddressBook').on('click', function () {
             OpenAddressBook();
             return false;
         });
 
         // Register event for customer dialog
-        $('#OptionCustomer').bind('click', function () {
+        $('#OptionCustomer').on('click', function () {
             OpenCustomerDialog();
             return false;
         });
@@ -194,7 +197,7 @@ Core.Agent.TicketAction = (function (TargetNS) {
             $('#RichTextField, .RichTextField').on('click', '.cke_button__spellcheck', function() {
                 Core.Config.Set('TextIsSpellChecked', true);
             });
-            $('#OptionSpellCheck').bind('click', function() {
+            $('#OptionSpellCheck').on('click', function() {
                 Core.Config.Set('TextIsSpellChecked', true);
             });
 
@@ -207,9 +210,9 @@ Core.Agent.TicketAction = (function (TargetNS) {
             Core.Form.Validate.SetSubmitFunction($('form[name=compose]'), function() {
                 if ($('#RichText').val() && !$('#RichText').hasClass('ValidationIgnore') && !Core.Config.Get('TextIsSpellChecked')) {
                     Core.App.Publish('Event.Agent.TicketAction.NeedSpellCheck', [$('#RichText')]);
-                    Core.UI.Dialog.ShowContentDialog('<p>' + Core.Config.Get('SpellCheckNeededMsg') + '</p>', '', '150px', 'Center', true, [
+                    Core.UI.Dialog.ShowContentDialog('<p>' + Core.Language.Translate('Please perform a spell check on the the text first.') + '</p>', '', '150px', 'Center', true, [
                         {
-                            Label: '<span>' + Core.Config.Get('DialogCloseMsg') + '</span>',
+                            Label: '<span>' + Core.Language.Translate('Close this dialog') + '</span>',
                             Function: function () {
                                 Core.UI.Dialog.CloseDialog($('.Dialog:visible'));
                                 Core.Form.EnableForm($('#RichText').closest('form'));
@@ -283,13 +286,13 @@ Core.Agent.TicketAction = (function (TargetNS) {
      */
     TargetNS.InitAddressBook = function () {
         // Register event for copying mail address to input field
-        $('#SearchResult a').bind('click', function () {
+        $('#SearchResult a').on('click', function () {
             AddMailAddress($(this));
             return false;
         });
 
         // Register Apply button event
-        $('#Apply').bind('click', function () {
+        $('#Apply').on('click', function () {
             // Update ticket action popup fields
             var $To, $Cc, $Bcc, CustomerData;
 
@@ -345,7 +348,7 @@ Core.Agent.TicketAction = (function (TargetNS) {
         });
 
         // Register Cancel button event
-        $('#Cancel').bind('click', function () {
+        $('#Cancel').on('click', function () {
             // Because we are in an iframe, we need to call the parent frames javascript function
             // with a jQuery object which is in the parent frames context
             parent.Core.UI.Dialog.CloseDialog($('.Dialog', parent.document));
@@ -356,19 +359,25 @@ Core.Agent.TicketAction = (function (TargetNS) {
      * @name InitSpellCheck
      * @memberof Core.Agent.TicketAction
      * @function
+     * @returns {Boolean} Returns false, if the current action is not the spellchecker iframe
      * @description
      *      This function initializes the necessary stuff for spell check link  in TicketAction screens.
      */
     TargetNS.InitSpellCheck = function () {
+
+        if (Core.Config.Get('Action') !== 'AgentSpelling') {
+            return false;
+        }
+
         // Register onchange event for dropdown and input field to change the radiobutton
-        $('#SpellCheck select, #SpellCheck input[type="text"]').bind('change', function () {
+        $('#SpellCheck select, #SpellCheck input[type="text"]').on('change', function () {
             var $Row = $(this).closest('tr'),
                 RowCount = parseInt($Row.attr('id').replace(/Row/, ''), 10);
             $Row.find('input[type="radio"][id=ChangeWord' + RowCount + ']').prop('checked', true);
         });
 
         // Register Apply button event
-        $('#Apply').bind('click', function () {
+        $('#Apply').on('click', function () {
             // Update ticket action popup fields
             var FieldName = $('#Field').val(),
                 $Body = $('#' + FieldName, parent.document);
@@ -381,7 +390,7 @@ Core.Agent.TicketAction = (function (TargetNS) {
         });
 
         // Register Cancel button event
-        $('#Cancel').bind('click', function () {
+        $('#Cancel').on('click', function () {
             // Because we are in an iframe, we need to call the parent frames javascript function
             // with a jQuery object which is in the parent frames context
             parent.Core.UI.Dialog.CloseDialog($('.Dialog', parent.document));
@@ -437,7 +446,8 @@ Core.Agent.TicketAction = (function (TargetNS) {
      *      in the textarea or RTE will be overwritten with the template content.
      */
     TargetNS.ConfirmTemplateOverwrite = function (FieldName, $TemplateSelect, Callback) {
-        var Content = '';
+        var Content = '',
+            LastValue = $TemplateSelect.data('LastValue') || '';
 
         // Fallback for non-richtext content
         Content = $('#' + FieldName).val();
@@ -450,16 +460,19 @@ Core.Agent.TicketAction = (function (TargetNS) {
         // if content already exists let user confirm to really overwrite that content with a template
         if (
             Content.length &&
-            !window.confirm(Core.Config.Get('TicketActionTemplateOverwrite') + ' ' + Core.Config.Get('TicketActionTemplateOverwriteConfirm')))
+            !window.confirm(Core.Language.Translate('Setting a template will overwrite any text or attachment.') + ' ' + Core.Language.Translate('Do you really want to continue?')))
             {
                 // if user cancels confirmation, reset template selection
-                $TemplateSelect.val('');
+                $TemplateSelect.val(LastValue).trigger('redraw');
 
         }
         else if ($.isFunction(Callback)) {
             Callback();
+            $TemplateSelect.data('LastValue', $TemplateSelect.val());
         }
     }
+
+    Core.Init.RegisterNamespace(TargetNS, 'APP_MODULE');
 
     return TargetNS;
 }(Core.Agent.TicketAction || {}));

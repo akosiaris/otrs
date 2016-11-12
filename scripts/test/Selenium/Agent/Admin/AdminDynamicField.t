@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -17,13 +17,49 @@ use Kernel::Language;
 # get selenium object
 my $Selenium = $Kernel::OM->Get('Kernel::System::UnitTest::Selenium');
 
+my $CheckBredcrumb = sub {
+
+    my %Param = @_;
+
+    my $OverviewTitle  = $Param{OverviewTitle};
+    my $BreadcrumbText = $Param{BreadcrumbText} || '';
+    my $Count          = 1;
+
+    for my $BreadcrumbText ( $OverviewTitle, $BreadcrumbText ) {
+        $Self->Is(
+            $Selenium->execute_script("return \$('.BreadCrumb li:eq($Count)').text().trim()"),
+            $BreadcrumbText,
+            "Breadcrumb text '$BreadcrumbText' is found on screen"
+        );
+
+        $Count++;
+    }
+};
+
 $Selenium->RunTest(
     sub {
 
         # get helper object
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        # create and login test user
+        my %DynamicFieldsOverviewPageShownSysConfig = $Kernel::OM->Get('Kernel::System::SysConfig')->ConfigItemGet(
+            Name => 'PreferencesGroups###DynamicFieldsOverviewPageShown',
+        );
+
+        %DynamicFieldsOverviewPageShownSysConfig = map { $_->{Key} => $_->{Content} }
+            grep { defined $_->{Key} } @{ $DynamicFieldsOverviewPageShownSysConfig{Setting}->[1]->{Hash}->[1]->{Item} };
+
+        # show more dynamic fields per page as the default value
+        $Helper->ConfigSettingChange(
+            Valid => 1,
+            Key   => 'PreferencesGroups###DynamicFieldsOverviewPageShown',
+            Value => {
+                %DynamicFieldsOverviewPageShownSysConfig,
+                DataSelected => 999,
+            },
+        );
+
+        # create test user and login
         my $Language      = 'de';
         my $TestUserLogin = $Helper->TestUserCreate(
             Groups   => ['admin'],
@@ -36,23 +72,31 @@ $Selenium->RunTest(
             Password => $TestUserLogin,
         );
 
-        # get config object
-        my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+        # get script alias
+        my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
 
         # navigate to AdminDynamiFied screen
-        my $ScriptAlias = $ConfigObject->Get('ScriptAlias');
-        $Selenium->get("${ScriptAlias}index.pl?Action=AdminDynamicField");
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AdminDynamicField");
 
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        # get language object
+        my $LanguageObject = Kernel::Language->new(
+            UserLanguage => $Language,
+        );
 
         # check overview AdminDynamicField
         $Selenium->find_element( "table",             'css' );
         $Selenium->find_element( "table thead tr th", 'css' );
         $Selenium->find_element( "table tbody tr td", 'css' );
 
-        # get which browser is used for testing
-        my $TestBrowser = $ConfigObject->Get('SeleniumTestsConfig')->{browser_name};
+        # check breadcrumb on Overview screen
+        $Self->True(
+            $Selenium->find_element( '.BreadCrumb', 'css' ),
+            "Breadcrumb is found on Overview screen.",
+        );
+
+        # define variables for breadcrumb
+        my $OverviewTitleBreadcrumb = $LanguageObject->Translate('Dynamic Fields Management');
+        my $IDText;
 
         # check page
         for my $Type (
@@ -76,32 +120,52 @@ $Selenium->RunTest(
                 # wait until page has finished loading
                 $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("#Name").length' );
 
+                # modify names in two cases
+                if ( $ID eq 'DateTime' ) {
+                    $IDText = 'Date / Time';
+                }
+                elsif ( $ID eq 'TextArea' ) {
+                    $IDText = 'Textarea';
+                }
+                else {
+                    $IDText = $ID;
+                }
+
+                # check breadcrumb on Add screen
+                $CheckBredcrumb->(
+                    OverviewTitle  => $OverviewTitleBreadcrumb,
+                    BreadcrumbText => $LanguageObject->Translate($Type) . ': '
+                        . $LanguageObject->Translate( 'Add ' . $IDText . ' Field' )
+                );
+
                 $Selenium->find_element( "#Name",  'css' )->send_keys($RandomID);
                 $Selenium->find_element( "#Label", 'css' )->send_keys($RandomID);
                 $Selenium->execute_script("\$('#ValidID').val('1').trigger('redraw.InputField').trigger('change');");
-                $Selenium->find_element( "#Name", 'css' )->submit();
+                $Selenium->find_element( "#Name", 'css' )->VerifiedSubmit();
 
                 # check if test DynamicField show on AdminDynamicField screen
-                $Selenium->WaitFor(
-                    JavaScript => "return typeof(\$) === 'function' && \$('.DynamicFieldsContent').length"
-                );
                 $Self->True(
                     index( $Selenium->get_page_source(), $RandomID ) > -1,
                     "$RandomID $ID $Type DynamicField found on page",
                 );
 
                 # go to new DynamicField again
-                $Selenium->find_element( $RandomID, 'link_text' )->click();
-                $Selenium->WaitFor( JavaScript => "return typeof(\$) === 'function' && \$('#Label').length" );
+                $Selenium->find_element( $RandomID, 'link_text' )->VerifiedClick();
+
+                # check breadcrumb on Edit screen
+                $CheckBredcrumb->(
+                    OverviewTitle => $OverviewTitleBreadcrumb,
+                    BreadcrumbText =>
+                        $LanguageObject->Translate($Type)
+                        . ': '
+                        . $LanguageObject->Translate( 'Change ' . $IDText . ' Field' ) . ' - '
+                        . $RandomID
+                );
+
                 $Selenium->find_element( "#Label", 'css' )->clear();
                 $Selenium->find_element( "#Label", 'css' )->send_keys( $RandomID . "-update" );
                 $Selenium->execute_script("\$('#ValidID').val('2').trigger('redraw.InputField').trigger('change');");
-                $Selenium->find_element( "#Name", 'css' )->submit();
-
-                # wait to load overview screen
-                $Selenium->WaitFor(
-                    JavaScript => "return typeof(\$) === 'function' && \$('.DynamicFieldsContent').length"
-                );
+                $Selenium->find_element( "#Name", 'css' )->VerifiedSubmit();
 
                 # check class of invalid DynamicField in the overview table
                 $Self->True(
@@ -112,8 +176,7 @@ $Selenium->RunTest(
                 );
 
                 # go to new DynamicField again after update and check values
-                $Selenium->find_element( $RandomID, 'link_text' )->click();
-                $Selenium->WaitFor( JavaScript => "return typeof(\$) === 'function' && \$('#Name').length" );
+                $Selenium->find_element( $RandomID, 'link_text' )->VerifiedClick();
 
                 # check new DynamicField values
                 $Self->Is(
@@ -132,10 +195,7 @@ $Selenium->RunTest(
                     "#ValidID stored value",
                 );
 
-                $Selenium->get("${ScriptAlias}index.pl?Action=AdminDynamicField");
-
-                # wait until page has loaded, if neccessary
-                $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+                $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AdminDynamicField");
 
                 # delete DynamicFields, check button for deleting Dynamic Field
                 my $DynamicFieldID = $Kernel::OM->Get('Kernel::System::DynamicField')->DynamicFieldGet(
@@ -161,11 +221,7 @@ JAVASCRIPT
 
                 $Selenium->find_element(
                     "//a[contains(\@data-query-string, \'Subaction=DynamicFieldDelete;ID=$DynamicFieldID' )]"
-                )->click();
-
-                my $LanguageObject = Kernel::Language->new(
-                    UserLanguage => $Language,
-                );
+                )->VerifiedClick();
 
                 $Self->Is(
                     $Selenium->execute_script("return window.getLastConfirm()"),
@@ -193,16 +249,17 @@ JAVASCRIPT
 
                 $Selenium->find_element(
                     "//a[contains(\@data-query-string, \'Subaction=DynamicFieldDelete;ID=$DynamicFieldID' )]"
-                )->click();
+                )->VerifiedClick();
 
+                # Wait for delete dialog to disappear.
                 $Selenium->WaitFor(
                     JavaScript => 'return typeof($) === "function" && $(".Dialog:visible").length === 0;'
                 );
-                $Selenium->get("${ScriptAlias}index.pl?Action=AdminDynamicField");
 
-                # wait until page has loaded, if neccessary
-                $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+                # navigate to AdminDynamicField screen
+                $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AdminDynamicField");
 
+                # check if dynamic filed is deleted
                 my $Success;
                 eval {
                     $Success = $Selenium->find_element( $RandomID, 'link_text' )->is_displayed();
@@ -215,7 +272,7 @@ JAVASCRIPT
 
             }
 
-            # make sure the cache is correct.
+            # make sure the cache is correct
             $Kernel::OM->Get('Kernel::System::Cache')->CleanUp( Type => "DynamicField" );
         }
     }

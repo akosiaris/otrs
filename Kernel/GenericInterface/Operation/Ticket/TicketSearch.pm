@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -26,11 +26,7 @@ Kernel::GenericInterface::Operation::Ticket::TicketSearch - GenericInterface Tic
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 usually, you want to create an instance of this
 by using Kernel::GenericInterface::Operation->new();
@@ -61,7 +57,7 @@ sub new {
     return $Self;
 }
 
-=item Run()
+=head2 Run()
 
 perform TicketSearch Operation. This will return a Ticket ID list.
 
@@ -138,6 +134,8 @@ perform TicketSearch Operation. This will return a Ticket ID list.
         #       values in an operator with OR.
         #   You can also pass more than one argument to an operator: ['value1', 'value2']
         DynamicField_FieldNameX => {
+            Empty             => 1,                       # will return dynamic fields without a value
+                                                          # set to 0 to search fields with a value present
             Equals            => 123,
             Like              => 'value*',                # "equals" operator with wildcard support
             GreaterThan       => '2001-01-01 01:01:01',
@@ -348,7 +346,7 @@ sub Run {
 
 =begin Internal:
 
-=item _GetParams()
+=head2 _GetParams()
 
 get search parameters.
 
@@ -374,7 +372,7 @@ sub _GetParams {
         qw(From To Cc Subject Body
         Agent ResultForm TimeSearchType ChangeTimeSearchType LastChangeTimeSearchType CloseTimeSearchType UseSubQueues
         ArticleTimeSearchType SearchInArchive
-        Fulltext ShownAttributes AttachmentName
+        Fulltext ContentSearch ShownAttributes AttachmentName
         )
         )
     {
@@ -392,7 +390,7 @@ sub _GetParams {
 
     # get array params
     for my $Item (
-        qw(TicketNumber Title
+        qw(TicketNumber TicketID Title
         StateIDs StateTypeIDs QueueIDs PriorityIDs OwnerIDs
         CreatedUserIDs WatchUserIDs ResponsibleIDs
         TypeIDs ServiceIDs SLAIDs LockIDs Queues Types States
@@ -494,7 +492,7 @@ sub _GetParams {
 
 }
 
-=item _GetDynamicFields()
+=head2 _GetDynamicFields()
 
 get search parameters.
 
@@ -553,7 +551,7 @@ sub _GetDynamicFields {
 
 }
 
-=item _CreateTimeSettings()
+=head2 _CreateTimeSettings()
 
 get search parameters.
 
@@ -812,8 +810,6 @@ sub _CreateTimeSettings {
 }
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

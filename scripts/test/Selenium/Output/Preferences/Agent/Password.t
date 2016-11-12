@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -33,7 +33,7 @@ $Selenium->RunTest(
         my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
 
         # go to agent preferences
-        $Selenium->get("${ScriptAlias}index.pl?Action=AgentPreferences");
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AgentPreferences");
 
         # wait until form has loaded, if neccessary
         $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
@@ -43,7 +43,7 @@ $Selenium->RunTest(
         $Selenium->find_element( "#CurPw",  'css' )->send_keys("incorrect");
         $Selenium->find_element( "#NewPw",  'css' )->send_keys($NewPw);
         $Selenium->find_element( "#NewPw1", 'css' )->send_keys($NewPw);
-        $Selenium->find_element( "#CurPw",  'css' )->submit();
+        $Selenium->find_element( "#CurPw",  'css' )->VerifiedSubmit();
 
         # wait until form has loaded, if neccessary
         $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
@@ -59,7 +59,7 @@ $Selenium->RunTest(
         $Selenium->find_element( "#CurPw",  'css' )->send_keys($TestUserLogin);
         $Selenium->find_element( "#NewPw",  'css' )->send_keys($NewPw);
         $Selenium->find_element( "#NewPw1", 'css' )->send_keys($NewPw);
-        $Selenium->find_element( "#CurPw",  'css' )->submit();
+        $Selenium->find_element( "#CurPw",  'css' )->VerifiedSubmit();
 
         # wait until form has loaded, if neccessary
         $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -32,9 +32,6 @@ sub new {
 
 sub FormIDCreate {
     my ( $Self, %Param ) = @_;
-
-    # cleanup temp form ids
-    $Self->FormIDCleanUp();
 
     # return requested form id
     return time() . '.' . rand(12341241);
@@ -132,7 +129,11 @@ sub FormIDRemoveFile {
     }
 
     my @Index = @{ $Self->FormIDGetAllFilesMeta(%Param) };
-    my $ID    = $Param{FileID} - 1;
+
+    # finish if files have been already removed by other process
+    return if !@Index;
+
+    my $ID = $Param{FileID} - 1;
     $Param{Filename} = $Index[$ID]->{Filename};
 
     return if !$Kernel::OM->Get('Kernel::System::DB')->Do(

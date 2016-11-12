@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -17,7 +17,15 @@ my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 my $XMLObject    = $Kernel::OM->Get('Kernel::System::XML');
 my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
 
-# test XMLParse2XMLHash() with an iso-8859-1 encoded xml
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+
+# test XMLParse2XMLHash() with an iso-8859-1 encoded XML
 my $String = '<?xml version="1.0" encoding="iso-8859-1" ?>
     <Contact>
       <Name type="long">' . "\x{00FC}" . ' Some Test</Name>
@@ -561,10 +569,10 @@ for my $Key (@Keys) {
 }
 
 #------------------------------------------------#
-# a test to find charset problems with xml files
+# a test to find charset problems with XML files
 #------------------------------------------------#
 
-# get the example xml
+# get the example XML
 my $Path = $ConfigObject->Get('Home');
 $Path .= "/scripts/test/sample/XML/";
 my $File = 'XML-Test-file.xml';
@@ -575,15 +583,15 @@ if ( open( my $DATA, "<", "$Path/$File" ) ) {    ## no critic
     }
     close($DATA);
 
-    # charset test - use file form the filesystem and parse it
+    # charset test - use file from the filesystem and parse it
     @XMLHash = $XMLObject->XMLParse2XMLHash( String => $String );
     $Self->True(
         $#XMLHash == 1
             && $XMLHash[1]->{'EISPP-Advisory'}->[1]->{System_Information}->[1]->{information},
-        'XMLParse2XMLHash() - charset test - use file form the filesystem and parse it',
+        'XMLParse2XMLHash() - charset test - use file from the filesystem and parse it',
     );
 
-    # charset test - use file form the article attachment and parse it
+    # charset test - use file from the article attachment and parse it
     my $TicketID = $TicketObject->TicketCreate(
         Title        => 'Some Ticket Title',
         Queue        => 'Raw',
@@ -645,7 +653,7 @@ if ( open( my $DATA, "<", "$Path/$File" ) ) {    ## no critic
     $Self->True(
         $#XMLHash == 1
             && $XMLHash[1]->{'EISPP-Advisory'}->[1]->{System_Information}->[1]->{information},
-        'XMLParse2XMLHash() - charset test - use file form the article attachment and parse it',
+        'XMLParse2XMLHash() - charset test - use file from the article attachment and parse it',
     );
 
 }
@@ -655,5 +663,7 @@ else {
         "XMLParse2XMLHash() - charset test - failed because example file not found",
     );
 }
+
+# cleanup is done by RestoreDatabase
 
 1;

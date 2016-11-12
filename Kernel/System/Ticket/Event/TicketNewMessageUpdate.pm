@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -96,15 +96,17 @@ sub Run {
 
         # check if ticket needs to be marked as seen
         my $ArticleAllSeen = 1;
+
+        my %Flags = $TicketObject->ArticleFlagsOfTicketGet(
+            TicketID => $Param{Data}->{TicketID},
+            UserID   => $Param{Data}->{UserID},
+        );
+
         ARTICLE:
         for my $ArticleID (@ArticleList) {
-            my %ArticleFlag = $TicketObject->ArticleFlagGet(
-                ArticleID => $ArticleID,
-                UserID    => $Param{Data}->{UserID},
-            );
 
             # last ARTICLE if article was not shown
-            if ( !$ArticleFlag{Seen} ) {
+            if ( !$Flags{$ArticleID}->{Seen} ) {
                 $ArticleAllSeen = 0;
                 last ARTICLE;
             }

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,6 +11,19 @@
 [% RenderBlockStart("Uninstall") %]
 <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
     <h1>[% Translate("Package Manager") | html %]</h1>
+
+    [% BreadcrumbPath = [
+            {
+                Name => Translate('Package Manager'),
+                Link => Env("Action"),
+            },
+        ]
+    %]
+
+    [% USE UninstallBreadcrumb = String(Translate("Uninstall Package")) %]
+    [% BreadcrumbPath.push({ Name => UninstallBreadcrumb.append( ': ', Data.Name ) }) %]
+
+    [% INCLUDE "Breadcrumb.tt" Path = BreadcrumbPath %]
 
     <div class="SidebarColumn">
 
@@ -31,7 +44,7 @@
         <div class="WidgetSimple">
             <div class="Header">
                 <h2>
-                    [% Translate("Uninstall package") | html %]
+                    [% Translate("Uninstall Package") | html %]
                 </h2>
             </div>
             <div class="Content">
@@ -53,7 +66,7 @@
                     </p>
                     <div class="Clear"></div>
                     <div class="Field SpacingTop">
-                        <form action="[% Env("CGIHandle") %]" method="post" enctype="multipart/form-data">
+                        <form action="[% Env("CGIHandle") %]" method="post" enctype="multipart/form-data" class="Validate PreventMultipleSubmits">
                             <input type="hidden" name="Action" value="[% Env("Action") %]"/>
                             <input type="hidden" name="Subaction" value="UninstallAction"/>
                             <input type="hidden" name="Name" value="[% Data.Name | html %]"/>
@@ -73,6 +86,19 @@
 [% RenderBlockStart("Reinstall") %]
 <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
     <h1>[% Translate("Package Manager") | html %]</h1>
+
+    [% BreadcrumbPath = [
+            {
+                Name => Translate('Package Manager'),
+                Link => Env("Action"),
+            },
+        ]
+    %]
+
+    [% USE ReinstallBreadcrumb = String(Translate("Reinstall package")) %]
+    [% BreadcrumbPath.push({ Name => ReinstallBreadcrumb.append( ': ', Data.Name ) }) %]
+
+    [% INCLUDE "Breadcrumb.tt" Path = BreadcrumbPath %]
 
     <div class="SidebarColumn">
 
@@ -115,7 +141,7 @@
                     </p>
                     <div class="Clear"></div>
                     <div class="Field SpacingTop">
-                        <form action="[% Env("CGIHandle") %]" method="post" enctype="multipart/form-data">
+                        <form action="[% Env("CGIHandle") %]" method="post" enctype="multipart/form-data" class="Validate PreventMultipleSubmits">
                             <input type="hidden" name="Action" value="[% Env("Action") %]"/>
                             <input type="hidden" name="Subaction" value="ReinstallAction"/>
                             <input type="hidden" name="Name" value="[% Data.Name | html %]"/>
@@ -135,6 +161,31 @@
 [% RenderBlockStart("Intro") %]
 <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
     <h1>[% Translate("Package Manager") | html %]</h1>
+
+    [% BreadcrumbPath = [
+            {
+                Name => Translate('Package Manager'),
+                Link => Env("Action"),
+            },
+        ]
+    %]
+
+    [% SWITCH Env("Subaction") %]
+        [% CASE 'InstallRemote' %]
+            [% USE InstallRemoteTitle = String(Translate("Install Package")) %]
+            [% BreadcrumbPath.push({ Name => InstallRemoteTitle.append( ': ', Data.Name ) }) %]
+        [% CASE 'Uninstall' %]
+            [% USE UninstallTitle = String(Translate("Uninstall Package")) %]
+            [% BreadcrumbPath.push({ Name => UninstallTitle.append( ': ', Data.Name ) }) %]
+        [% CASE 'UpgradeRemote' %]
+            [% USE UpgradeRemoteTitle = String(Translate("Upgrade Package")) %]
+            [% BreadcrumbPath.push({ Name => UpgradeRemoteTitle.append( ': ', Data.Name ) }) %]
+        [% CASE 'InstallUpload' %]
+            [% USE InstallUploadTitle = String(Translate("Install Package")) %]
+            [% BreadcrumbPath.push({ Name => InstallUploadTitle.append( ': ', Data.Name ) }) %]
+    [% END %]
+
+    [% INCLUDE "Breadcrumb.tt" Path = BreadcrumbPath %]
 
     <div class="SidebarColumn">
         <div class="WidgetSimple">
@@ -164,7 +215,7 @@
                     <p class="IntroInstall">
                         [% Data.Description %]
                     </p>
-                    <form action="[% Env("CGIHandle") %]" method="post" enctype="multipart/form-data">
+                    <form action="[% Env("CGIHandle") %]" method="post" enctype="multipart/form-data" class="Validate PreventMultipleSubmits">
                         <input type="hidden" name="Action" value="[% Env("Action") %]"/>
                         <input type="hidden" name="Subaction" value="[% Data.Subaction | html %]"/>
                         <input type="hidden" name="FormID" value="[% Data.FormID | html %]"/>
@@ -190,6 +241,16 @@
 [% RenderBlockStart("Overview") %]
     <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
         <h1>[% Translate("Package Manager") | html %]</h1>
+
+    [% BreadcrumbPath = [
+            {
+                Name => Translate('Package Manager'),
+                Link => Env("Action"),
+            },
+        ]
+    %]
+
+    [% INCLUDE "Breadcrumb.tt" Path = BreadcrumbPath %]
 
         <div class="SidebarColumn">
             <div class="WidgetSimple">
@@ -228,6 +289,27 @@
                                 </button>
                             </form>
                         </li>
+ [% RenderBlockStart("CloudServicesWarning") %]
+                        <li>
+                            <p class="FieldExplanation Error">
+                                [% Translate("Cloud services are currently disabled.") | html %]
+                                </br>
+                                [% Translate("OTRS Verify™ can not continue!") | html %]
+                            </p>
+                            <form action="[% Env("CGIHandle") %]" method="post">
+                                <input type="hidden" name="Action" value="AdminSysConfig"/>
+                                <input type="hidden" name="Subaction" value="Edit"/>
+                                <input type="hidden" name="SysConfigGroup" value="CloudService"/>
+                                <input type="hidden" name="SysConfigSubGroup" value="Core"/>
+                                <fieldset>
+                                    <button class="Fullsize CallForAction LittleSpacingTop Center" type="submit" value="[% Translate("Enable cloud services") | html %]">
+                                        <span><i class="fa fa-cloud"></i> [% Translate("Enable cloud services") | html %]</span>
+                                    </button>
+                                </fieldset>
+                            </form>
+                        </li>
+[% RenderBlockEnd("CloudServicesWarning") %]
+
                     </ul>
                 </div>
             </div>
@@ -358,7 +440,7 @@
 
                 <div class="Header">
                     <h2>
-                        [% Translate("Features for %s customers only", OTRSBusinessLabel) %]
+                        [% Translate("Features for %s Customers Only", OTRSBusinessLabel) %]
                         → <a href="mailto:sales@otrs.com">sales@otrs.com</a>
                     </h2>
                 </div>
@@ -397,6 +479,19 @@
     <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
         <h1>[% Translate("Package Manager") | html %]</h1>
 
+    [% BreadcrumbPath = [
+            {
+                Name => Translate('Package Manager'),
+                Link => Env("Action"),
+            },
+        ]
+    %]
+
+    [% USE PackageBreadcrumb = String(Translate("Package Information")) %]
+    [% BreadcrumbPath.push({ Name => PackageBreadcrumb.append( ': ', Data.Name ) }) %]
+
+    [% INCLUDE "Breadcrumb.tt" Path = BreadcrumbPath %]
+
         <div class="SidebarColumn">
             <div class="WidgetSimple">
                 <div class="Header">
@@ -411,29 +506,29 @@
                         </li>
 [% RenderBlockStart("PackageDownloadLocal") %]
                         <li>
-                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=Download;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %]" class="CallForAction">
-                                <span>[% Translate("Download package") | html %]</span>
+                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=Download;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %]" class="CallForAction Fullsize Center">
+                                <span><i class="fa fa-download"></i>[% Translate("Download package") | html %]</span>
                             </a>
                         </li>
 [% RenderBlockEnd("PackageDownloadLocal") %]
 [% RenderBlockStart("PackageDownloadRemote") %]
                         <li>
-                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=DownloadRemote;File=[% Data.File | uri %]" class="CallForAction">
-                                <span>[% Translate("Download package") | html %]</span>
+                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=DownloadRemote;File=[% Data.File | uri %]" class="CallForAction Fullsize Center">
+                                <span><i class="fa fa-download"></i>[% Translate("Download package") | html %]</span>
                             </a>
                         </li>
 [% RenderBlockEnd("PackageDownloadRemote") %]
 [% RenderBlockStart("PackageRebuild") %]
                         <li>
-                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=RebuildPackage;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %];[% Env("ChallengeTokenParam") | html %]" class="CallForAction">
-                                <span>[% Translate("Rebuild package") | html %]</span>
+                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=RebuildPackage;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %];[% Env("ChallengeTokenParam") | html %]" class="CallForAction Fullsize Center">
+                                <span><i class="fa fa-retweet"></i>[% Translate("Rebuild package") | html %]</span>
                             </a>
                         </li>
 [% RenderBlockEnd("PackageRebuild") %]
 [% RenderBlockStart("PackageReinstall") %]
                         <li>
-                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=Reinstall;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %];[% Env("ChallengeTokenParam") | html %]" class="CallForAction">
-                                <span>[% Translate("Reinstall package") | html %]</span>
+                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=Reinstall;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %];[% Env("ChallengeTokenParam") | html %]" class="CallForAction Fullsize Center">
+                                <span><i class="fa fa-refresh"></i>[% Translate("Reinstall package") | html %]</span>
                             </a>
                         </li>
 [% RenderBlockEnd("PackageReinstall") %]
@@ -602,6 +697,19 @@
     <div class="MainBox ARIARoleMain LayoutFixedSidebar SidebarFirst">
         <h1>[% Translate("Package Manager") | html %]</h1>
 
+    [% BreadcrumbPath = [
+            {
+                Name => Translate('Package Manager'),
+                Link => Env("Action"),
+            },
+        ]
+    %]
+
+    [% USE FileDiffBreadcrumb = String(Translate("File Differences for File %s", Data.Location)) %]
+    [% BreadcrumbPath.push({ Name => FileDiffBreadcrumb.append( ': ', Data.Name ) }) %]
+
+    [% INCLUDE "Breadcrumb.tt" Path = BreadcrumbPath %]
+
         <div class="SidebarColumn">
 
             <div class="WidgetSimple">
@@ -611,7 +719,7 @@
                 <div class="Content">
                     <ul class="ActionList">
                         <li>
-                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=View;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %]" class="CallForAction">
+                            <a href="[% Env("Baselink") %]Action=[% Env("Action") %];Subaction=View;Name=[% Data.Name | uri %];Version=[% Data.Version | uri %]" class="CallForAction Fullsize Center">
                                 <span>[% Translate("Go to overview") | html %]</span>
                             </a>
                         </li>
@@ -623,7 +731,7 @@
             <div class="WidgetSimple">
                 <div class="Header">
                     <h2>
-                        [% Data.Name | html %]: [% Translate("File differences for file %s", Data.Location) | html %]
+                        [% Data.Name | html %]: [% Translate("File Differences for File %s", Data.Location) | html %]
                     </h2>
                 </div>
                 <div class="Content">

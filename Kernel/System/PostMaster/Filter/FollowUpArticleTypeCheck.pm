@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 our @ObjectDependencies = (
+    'Kernel::System::CustomerUser',
     'Kernel::System::Log',
     'Kernel::System::Ticket',
 );
@@ -65,10 +66,29 @@ sub Run {
     );
     return if !@ArticleIndex;
 
-    # check if current sender is customer (do nothing)
-    if ( $ArticleIndex[0]->{CustomerUserID} && $Param{GetParam}->{'X-Sender'} ) {
-        return 1 if lc $ArticleIndex[0]->{CustomerUserID} eq lc $Param{GetParam}->{'X-Sender'};
+    # Check if it is a known customer, otherwise use email address from CustomerUserID field of the ticket.
+    my %CustomerData = $Kernel::OM->Get('Kernel::System::CustomerUser')->CustomerUserDataGet(
+        User => $ArticleIndex[0]->{CustomerUserID},
+    );
+    my $CustomerEmailAddress = $CustomerData{UserEmail} || $ArticleIndex[0]->{CustomerUserID};
+
+    # Email sender address
+    my $SenderAddress = $Param{GetParam}->{'X-Sender'};
+
+    # Email Reply-To address for forwarded emails
+    my $ReplyToAddress;
+    if ( $Param{GetParam}->{ReplyTo} ) {
+        $ReplyToAddress = $Self->{ParserObject}->GetEmailAddress(
+            Email => $Param{GetParam}->{ReplyTo},
+        );
     }
+
+    # check if current sender is customer (do nothing)
+    if ( $CustomerEmailAddress && $SenderAddress ) {
+        return 1 if lc $CustomerEmailAddress eq lc $SenderAddress;
+    }
+
+    my @References = $Self->{ParserObject}->GetReferences();
 
     # check if current sender got an internal forward
     my $InternalForward;
@@ -84,6 +104,7 @@ sub Run {
         # check recipients
         next ARTICLE if !$Article->{To};
 
+        # check based on recipient addresses of the article
         my @ToEmailAddresses = $Self->{ParserObject}->SplitAddressLine(
             Line => $Article->{To},
         );
@@ -97,12 +118,25 @@ sub Run {
             my $Recipient = $Self->{ParserObject}->GetEmailAddress(
                 Email => $Email,
             );
-            if ( lc $Recipient eq lc $Param{GetParam}->{'X-Sender'} ) {
+            if ( lc $Recipient eq lc $SenderAddress ) {
                 $InternalForward = 1;
-                last EMAIL;
+                last ARTICLE;
+            }
+            if ( $ReplyToAddress && lc $Recipient eq lc $ReplyToAddress ) {
+                $InternalForward = 1;
+                last ARTICLE;
+            }
+        }
+
+        # check based on Message-ID of the article
+        for my $Reference (@References) {
+            if ( $Article->{MessageID} && $Article->{MessageID} eq $Reference ) {
+                $InternalForward = 1;
+                last ARTICLE;
             }
         }
     }
+
     return 1 if !$InternalForward;
 
     # get latest customer article (current arrival)

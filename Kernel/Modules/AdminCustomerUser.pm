@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,8 @@ use strict;
 use warnings;
 
 use Kernel::System::CheckItem;
+use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -21,6 +23,12 @@ sub new {
     # allocate new hash for object
     my $Self = {%Param};
     bless( $Self, $Type );
+
+    my $DynamicFieldConfigs = $Kernel::OM->Get('Kernel::System::DynamicField')->DynamicFieldListGet(
+        ObjectType => 'CustomerUser',
+    );
+
+    $Self->{DynamicFieldLookup} = { map { $_->{Name} => $_ } @{$DynamicFieldConfigs} };
 
     return $Self;
 }
@@ -229,11 +237,15 @@ sub Run {
     # change
     # ------------------------------------------------------------ #
     elsif ( $Self->{Subaction} eq 'Change' ) {
-        my $User = $ParamObject->GetParam( Param => 'ID' ) || '';
+        my $User         = $ParamObject->GetParam( Param => 'ID' )           || '';
+        my $Notification = $ParamObject->GetParam( Param => 'Notification' ) || '';
 
         # get user data
         my %UserData = $CustomerUserObject->CustomerUserDataGet( User => $User );
+
         my $Output = $NavBar;
+        $Output .= $LayoutObject->Notify( Info => Translatable('Customer updated!') )
+            if ( $Notification && $Notification eq 'Update' );
         $Output .= $Self->_Edit(
             Nav    => $Nav,
             Action => 'Change',
@@ -261,21 +273,72 @@ sub Run {
         # challenge token check for write action
         $LayoutObject->ChallengeTokenCheck();
 
+        # update only the preferences and dynamic fields, if the source is readonly or a ldap backend
+        my $UpdateOnlyPreferences;
+
+        if ( $ConfigObject->Get($Source)->{ReadOnly} || $ConfigObject->Get($Source)->{Module} =~ /LDAP/i ) {
+            $UpdateOnlyPreferences = 1;
+        }
+
         my $Note = '';
         my ( %GetParam, %Errors );
-        for my $Entry ( @{ $ConfigObject->Get($Source)->{Map} } ) {
-            $GetParam{ $Entry->[0] } = $ParamObject->GetParam( Param => $Entry->[0] ) || '';
 
-            # check mandatory fields
-            if ( !$GetParam{ $Entry->[0] } && $Entry->[4] ) {
-                $Errors{ $Entry->[0] . 'Invalid' } = 'ServerError';
+        # Get dynamic field backend object.
+        my $DynamicFieldBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
+
+        ENTRY:
+        for my $Entry ( @{ $ConfigObject->Get($Source)->{Map} } ) {
+
+            # check dynamic fields
+            if ( $Entry->[5] eq 'dynamic_field' ) {
+
+                my $DynamicFieldConfig = $Self->{DynamicFieldLookup}->{ $Entry->[2] };
+
+                if ( !IsHashRefWithData($DynamicFieldConfig) ) {
+                    $Kernel::OM->Get('Kernel::System::Log')->Log(
+                        Priority => 'error',
+                        Message  => "DynamicField $Entry->[2] not found!",
+                    );
+                    next ENTRY;
+                }
+
+                my $ValidationResult = $DynamicFieldBackendObject->EditFieldValueValidate(
+                    DynamicFieldConfig => $DynamicFieldConfig,
+                    ParamObject        => $ParamObject,
+                    Mandatory          => $Entry->[4],
+                );
+
+                if ( $ValidationResult->{ServerError} ) {
+                    $Errors{ $Entry->[0] } = $ValidationResult;
+                }
+                else {
+
+                    # generate storable value of dynamic field edit field
+                    $GetParam{ $Entry->[0] } = $DynamicFieldBackendObject->EditFieldValueGet(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        ParamObject        => $ParamObject,
+                        LayoutObject       => $LayoutObject,
+                    );
+                }
+            }
+
+            # check remaining non-dynamic-field mandatory fields
+            else {
+                $GetParam{ $Entry->[0] } = $ParamObject->GetParam( Param => $Entry->[0] ) || '';
+
+                next ENTRY if $UpdateOnlyPreferences;
+
+                if ( !$GetParam{ $Entry->[0] } && $Entry->[4] ) {
+                    $Errors{ $Entry->[0] . 'Invalid' } = 'ServerError';
+                }
             }
         }
         $GetParam{ID} = $ParamObject->GetParam( Param => 'ID' ) || '';
 
         # check email address
         if (
-            $GetParam{UserEmail}
+            !$UpdateOnlyPreferences
+            && $GetParam{UserEmail}
             && !$CheckItemObject->CheckEmail( Address => $GetParam{UserEmail} )
             )
         {
@@ -286,12 +349,44 @@ sub Run {
         # if no errors occurred
         if ( !%Errors ) {
 
-            # update user
-            my $Update = $CustomerUserObject->CustomerUserUpdate(
-                %GetParam,
-                UserID => $Self->{UserID},
-            );
-            if ($Update) {
+            my $UpdateSuccess;
+            if ( !$UpdateOnlyPreferences ) {
+                $UpdateSuccess = $CustomerUserObject->CustomerUserUpdate(
+                    %GetParam,
+                    UserID => $Self->{UserID},
+                );
+            }
+
+            if ( $UpdateSuccess || $UpdateOnlyPreferences ) {
+
+                # set dynamic field values
+                my $DynamicFieldObject = $Kernel::OM->Get('Kernel::System::DynamicField');
+
+                ENTRY:
+                for my $Entry ( @{ $ConfigObject->Get($Source)->{Map} } ) {
+                    next ENTRY if $Entry->[5] ne 'dynamic_field';
+
+                    my $DynamicFieldConfig = $Self->{DynamicFieldLookup}->{ $Entry->[2] };
+
+                    if ( !IsHashRefWithData($DynamicFieldConfig) ) {
+                        $Note .= $LayoutObject->Notify( Info => "DynamicField $Entry->[2] not found!" );
+                        next ENTRY;
+                    }
+
+                    my $ValueSet = $DynamicFieldBackendObject->ValueSet(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        ObjectName         => $GetParam{UserLogin},
+                        Value              => $GetParam{ $Entry->[0] },
+                        UserID             => $Self->{UserID},
+                    );
+
+                    if ( !$ValueSet ) {
+                        $Note .= $LayoutObject->Notify(
+                            Info => "Unable to set value for dynamic field $Entry->[2]!"
+                        );
+                        next ENTRY;
+                    }
+                }
 
                 # update preferences
                 my %Preferences = %{ $ConfigObject->Get('CustomerPreferencesGroups') };
@@ -332,27 +427,27 @@ sub Run {
                     }
                 }
 
+                # clear customer user cache
+                $CustomerUserObject->CustomerUserCacheClear(
+                    UserLogin => $GetParam{UserLogin},
+                );
+
                 # get user data and show screen again
                 if ( !$Note ) {
-                    $Self->_Overview(
-                        Nav    => $Nav,
-                        Search => $Search,
-                    );
-                    my $Output = $NavBar . $Note;
-                    $Output .= $LayoutObject->Notify( Info => 'Customer updated!' );
-                    $Output .= $LayoutObject->Output(
-                        TemplateFile => 'AdminCustomerUser',
-                        Data         => \%Param,
-                    );
 
-                    if ( $Nav eq 'None' ) {
-                        $Output .= $LayoutObject->Footer( Type => 'Small' );
+                    # if the user would like to continue editing the priority, just redirect to the edit screen
+                    if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+                        my $ID = $ParamObject->GetParam( Param => 'ID' ) || '';
+                        return $LayoutObject->Redirect(
+                            OP =>
+                                "Action=$Self->{Action};Subaction=Change;ID=$ID;Search=$Search;Nav=$Nav;Notification=Update"
+                        );
                     }
                     else {
-                        $Output .= $LayoutObject->Footer();
-                    }
 
-                    return $Output;
+                        # otherwise return to overview
+                        return $LayoutObject->Redirect( OP => "Action=$Self->{Action};Notification=Update" );
+                    }
                 }
             }
             else {
@@ -421,16 +516,54 @@ sub Run {
 
         my $AutoLoginCreation = $ConfigObject->Get($Source)->{AutoLoginCreation};
 
+        # Get dynamic field backend object.
+        my $DynamicFieldBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
+
         ENTRY:
         for my $Entry ( @{ $ConfigObject->Get($Source)->{Map} } ) {
-            $GetParam{ $Entry->[0] } = $ParamObject->GetParam( Param => $Entry->[0] ) || '';
 
             # don't validate UserLogin if AutoLoginCreation is configured
             next ENTRY if ( $AutoLoginCreation && $Entry->[0] eq 'UserLogin' );
 
-            # check mandatory fields
-            if ( !$GetParam{ $Entry->[0] } && $Entry->[4] ) {
-                $Errors{ $Entry->[0] . 'Invalid' } = 'ServerError';
+            # check dynamic fields
+            if ( $Entry->[5] eq 'dynamic_field' ) {
+
+                my $DynamicFieldConfig = $Self->{DynamicFieldLookup}->{ $Entry->[2] };
+
+                if ( !IsHashRefWithData($DynamicFieldConfig) ) {
+                    $Kernel::OM->Get('Kernel::System::Log')->Log(
+                        Priority => 'error',
+                        Message  => "DynamicField $Entry->[2] not found!",
+                    );
+                    next ENTRY;
+                }
+
+                my $ValidationResult = $DynamicFieldBackendObject->EditFieldValueValidate(
+                    DynamicFieldConfig => $DynamicFieldConfig,
+                    ParamObject        => $ParamObject,
+                    Mandatory          => $Entry->[4],
+                );
+
+                if ( $ValidationResult->{ServerError} ) {
+                    $Errors{ $Entry->[0] } = $ValidationResult;
+                }
+                else {
+
+                    # generate storable value of dynamic field edit field
+                    $GetParam{ $Entry->[0] } = $DynamicFieldBackendObject->EditFieldValueGet(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        ParamObject        => $ParamObject,
+                        LayoutObject       => $LayoutObject,
+                    );
+                }
+            }
+
+            # check remaining non-dynamic-field mandatory fields
+            else {
+                $GetParam{ $Entry->[0] } = $ParamObject->GetParam( Param => $Entry->[0] ) || '';
+                if ( !$GetParam{ $Entry->[0] } && $Entry->[4] ) {
+                    $Errors{ $Entry->[0] . 'Invalid' } = 'ServerError';
+                }
             }
         }
 
@@ -454,6 +587,33 @@ sub Run {
                 Source => $Source
             );
             if ($User) {
+
+                # set dynamic field values
+                my $DynamicFieldObject = $Kernel::OM->Get('Kernel::System::DynamicField');
+
+                ENTRY:
+                for my $Entry ( @{ $ConfigObject->Get($Source)->{Map} } ) {
+                    next ENTRY if $Entry->[5] ne 'dynamic_field';
+
+                    my $DynamicFieldConfig = $Self->{DynamicFieldLookup}->{ $Entry->[2] };
+
+                    if ( !IsHashRefWithData($DynamicFieldConfig) ) {
+                        $Note .= $LayoutObject->Notify( Info => "DynamicField $Entry->[2] not found!" );
+                        next ENTRY;
+                    }
+
+                    my $ValueSet = $DynamicFieldBackendObject->ValueSet(
+                        DynamicFieldConfig => $DynamicFieldConfig,
+                        ObjectName         => $GetParam{UserLogin},
+                        Value              => $GetParam{ $Entry->[0] },
+                        UserID             => $Self->{UserID},
+                    );
+
+                    if ( !$ValueSet ) {
+                        $Note .= $LayoutObject->Notify( Info => "Unable to set value for dynamic field $Entry->[2]!" );
+                        next ENTRY;
+                    }
+                }
 
                 # update preferences
                 my %Preferences = %{ $ConfigObject->Get('CustomerPreferencesGroups') };
@@ -501,11 +661,13 @@ sub Run {
                     if ( $Nav eq 'None' ) {
                         my $Output = $NavBar;
 
-                        $LayoutObject->Block(
-                            Name => 'BorrowedViewSubmitJS',
-                            Data => {
-                                Customer => $User,
-                            },
+                        $LayoutObject->AddJSData(
+                            Key   => 'Customer',
+                            Value => $User,
+                        );
+                        $LayoutObject->AddJSData(
+                            Key   => 'Nav',
+                            Value => $Nav,
                         );
 
                         $Output .= $LayoutObject->Output(
@@ -611,7 +773,12 @@ sub Run {
             Nav    => $Nav,
             Search => $Search,
         );
+
+        my $Notification = $ParamObject->GetParam( Param => 'Notification' ) || '';
         my $Output = $NavBar;
+        $Output .= $LayoutObject->Notify( Info => Translatable('Customer user updated!') )
+            if ( $Notification && $Notification eq 'Update' );
+
         $Output .= $LayoutObject->Output(
             TemplateFile => 'AdminCustomerUser',
             Data         => \%Param,
@@ -666,21 +833,63 @@ sub _Overview {
         );
     }
 
-    $LayoutObject->Block(
-        Name => 'OverviewHeader',
-        Data => {},
-    );
-
-    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
-
-    # when there is no data to show, a message is displayed on the table with this colspan
-    my $ColSpan = 6;
-
     if ( $Param{Search} ) {
+
+        # get config object
+        my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+
+        # when there is no data to show, a message is displayed on the table with this colspan
+        my $ColSpan = 6;
+
+        # same Limit as $Self->{CustomerUserMap}->{CustomerUserSearchListLimit}
+        # smallest Limit from all sources
+        my $Limit = 400;
+        SOURCE:
+        for my $Count ( '', 1 .. 10 ) {
+            next SOURCE if !$ConfigObject->Get("CustomerUser$Count");
+            my $CustomerUserMap = $ConfigObject->Get("CustomerUser$Count");
+            next SOURCE if !$CustomerUserMap->{CustomerUserSearchListLimit};
+            if ( $CustomerUserMap->{CustomerUserSearchListLimit} < $Limit ) {
+                $Limit = $CustomerUserMap->{CustomerUserSearchListLimit};
+            }
+        }
+
+        my %ListAllItems = $CustomerUserObject->CustomerSearch(
+            Search => $Param{Search},
+            Limit  => $Limit + 1,
+            Valid  => 0,
+        );
+
+        if ( keys %ListAllItems <= $Limit ) {
+            my $ListAllItems = keys %ListAllItems;
+            $LayoutObject->Block(
+                Name => 'OverviewHeader',
+                Data => {
+                    ListAll => $ListAllItems,
+                    Limit   => $Limit,
+                },
+            );
+        }
+
         my %List = $CustomerUserObject->CustomerSearch(
             Search => $Param{Search},
             Valid  => 0,
         );
+
+        if ( keys %ListAllItems > $Limit ) {
+            my $ListAllItems   = keys %ListAllItems;
+            my $SearchListSize = keys %List;
+
+            $LayoutObject->Block(
+                Name => 'OverviewHeader',
+                Data => {
+                    SearchListSize => $SearchListSize,
+                    ListAll        => $ListAllItems,
+                    Limit          => $Limit,
+                },
+            );
+        }
+
         $LayoutObject->Block(
             Name => 'OverviewResult',
             Data => \%Param,
@@ -774,14 +983,16 @@ sub _Overview {
         );
     }
 
-    if ( $Param{Nav} eq 'None' ) {
-        $LayoutObject->Block( Name => 'BorrowedViewJS' );
-    }
+    $LayoutObject->AddJSData(
+        Key   => 'Nav',
+        Value => $Param{Nav},
+    );
 }
 
 sub _Edit {
     my ( $Self, %Param ) = @_;
 
+    # Get layout object.
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
 
     my $Output = '';
@@ -810,11 +1021,63 @@ sub _Edit {
         $LayoutObject->Block( Name => 'HeaderAdd' );
     }
 
+    my $UpdateOnlyPreferences;
+
+    # Get config object
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+
+    # update user
+    if ( $ConfigObject->Get( $Param{Source} )->{ReadOnly} || $ConfigObject->Get( $Param{Source} )->{Module} =~ /LDAP/i )
+    {
+        $UpdateOnlyPreferences = 1;
+    }
+
+    # Get dynamic field backend object.
+    my $DynamicFieldBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
+    my $ParamObject               = $Kernel::OM->Get('Kernel::System::Web::Request');
 
     ENTRY:
     for my $Entry ( @{ $ConfigObject->Get( $Param{Source} )->{Map} } ) {
         next ENTRY if !$Entry->[0];
+
+        # Handle dynamic fields
+        if ( $Entry->[5] eq 'dynamic_field' ) {
+
+            my $DynamicFieldConfig = $Self->{DynamicFieldLookup}->{ $Entry->[2] };
+
+            next ENTRY if !IsHashRefWithData($DynamicFieldConfig);
+
+            # Get HTML for dynamic field
+            my $DynamicFieldHTML = $DynamicFieldBackendObject->EditFieldRender(
+                DynamicFieldConfig => $DynamicFieldConfig,
+                Value              => $Param{ $Entry->[0] } ? $Param{ $Entry->[0] } : undef,
+                Mandatory          => $Entry->[4],
+                LayoutObject       => $LayoutObject,
+                ParamObject        => $ParamObject,
+
+                # Server error, if any
+                %{ $Param{Errors}->{ $Entry->[0] } },
+            );
+
+            # skip fields for which HTML could not be retrieved
+            next ENTRY if !IsHashRefWithData($DynamicFieldHTML);
+
+            $LayoutObject->Block(
+                Name => 'Item',
+                Data => {},
+            );
+
+            $LayoutObject->Block(
+                Name => 'DynamicField',
+                Data => {
+                    Name  => $DynamicFieldConfig->{Name},
+                    Label => $DynamicFieldHTML->{Label},
+                    Field => $DynamicFieldHTML->{Field},
+                },
+            );
+
+            next ENTRY;
+        }
 
         my $Block = 'Input';
 
@@ -824,20 +1087,15 @@ sub _Edit {
         }
 
         # check if login auto creation
-        if (
-            $ConfigObject->Get( $Param{Source} )->{AutoLoginCreation}
-            && $Entry->[0] eq 'UserLogin'
-            )
-        {
+        if ( $ConfigObject->Get( $Param{Source} )->{AutoLoginCreation} && $Entry->[0] eq 'UserLogin' ) {
             $Block = 'InputHidden';
         }
-        if ( $Entry->[7] ) {
-            $Param{ReadOnlyType} = 'readonly';
-            $Param{ReadOnly}     = '*';
+
+        if ( $Entry->[7] || $UpdateOnlyPreferences ) {
+            $Param{ReadOnly} = 1;
         }
         else {
-            $Param{ReadOnlyType} = '';
-            $Param{ReadOnly}     = '';
+            $Param{ReadOnly} = 0;
         }
 
         # show required flag
@@ -885,6 +1143,7 @@ sub _Edit {
                 Translation => 1,
                 SelectedID  => $Param{ $Entry->[0] },
                 Class       => "$Param{RequiredClass} Modernize " . $Param{Errors}->{ $Entry->[0] . 'Invalid' },
+                Disabled    => $UpdateOnlyPreferences ? 1 : 0,
             );
         }
         elsif ( $Entry->[0] =~ /^ValidID/i ) {
@@ -901,6 +1160,7 @@ sub _Edit {
                 Name       => $Entry->[0],
                 SelectedID => defined( $Param{ $Entry->[0] } ) ? $Param{ $Entry->[0] } : 1,
                 Class      => "$Param{RequiredClass} Modernize " . $Param{Errors}->{ $Entry->[0] . 'Invalid' },
+                Disabled   => $UpdateOnlyPreferences ? 1 : 0,
             );
         }
         elsif (
@@ -934,6 +1194,7 @@ sub _Edit {
                 Max        => 80,
                 SelectedID => $Param{ $Entry->[0] } || $Param{CustomerID},
                 Class      => "$Param{RequiredClass} Modernize " . $Param{Errors}->{ $Entry->[0] . 'Invalid' },
+                Disabled   => $UpdateOnlyPreferences ? 1 : 0,
             );
         }
         elsif ( $Param{Action} eq 'Add' && $Entry->[0] =~ /^UserCustomerID$/i ) {
@@ -1109,9 +1370,10 @@ sub _Edit {
         }
     }
 
-    if ( $Param{Nav} eq 'None' ) {
-        $LayoutObject->Block( Name => 'BorrowedViewJS' );
-    }
+    $LayoutObject->AddJSData(
+        Key   => 'Nav',
+        Value => $Param{Nav},
+    );
 
     return $LayoutObject->Output(
         TemplateFile => 'AdminCustomerUser',

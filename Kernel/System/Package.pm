@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -19,6 +19,7 @@ use Kernel::System::SysConfig;
 use Kernel::System::WebUserAgent;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 use base qw(Kernel::System::EventHandler);
 
@@ -40,22 +41,16 @@ our @ObjectDependencies = (
 
 Kernel::System::Package - to manage application packages/modules
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All functions to manage application packages/modules.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create an object
 
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $PackageObject = $Kernel::OM->Get('Kernel::System::Package');
 
 =cut
@@ -114,15 +109,7 @@ sub new {
         File => 'ARRAY',
     };
 
-    $Self->{PackageVerifyURL} = 'https://pav.otrs.com/otrs/public.pl';
-
     $Self->{Home} = $Self->{ConfigObject}->Get('Home');
-
-    # permission check
-    if ( !$Self->_FileSystemCheck() ) {
-        die "ERROR: Need write permission in OTRS home\n"
-            . "Try: \$OTRS_HOME/bin/otrs.SetPermissions.pl !!!\n";
-    }
 
     # init of event handler
     $Self->EventHandlerInit(
@@ -132,10 +119,13 @@ sub new {
     # reserve space for merged packages
     $Self->{MergedPackages} = {};
 
+    # check if cloud services are disabled
+    $Self->{CloudServicesDisabled} = $Self->{ConfigObject}->Get('CloudServices::Disabled') || 0;
+
     return $Self;
 }
 
-=item RepositoryList()
+=head2 RepositoryList()
 
 returns a list of repository packages
 using Result => 'short' will only return name, version, install_status md5sum and vendor
@@ -183,6 +173,7 @@ sub RepositoryList {
     # fetch the data
     my @Data;
     while ( my @Row = $DBObject->FetchrowArray() ) {
+
         my %Package = (
             Name    => $Row[0],
             Version => $Row[1],
@@ -198,13 +189,11 @@ sub RepositoryList {
         if ( $Row[3] && $Result eq 'Short' ) {
 
             push @Data, {%Package};
-
         }
         elsif ( $Row[3] ) {
 
             my %Structure = $Self->PackageParse( String => \$Row[3] );
             push @Data, { %Package, %Structure };
-
         }
     }
 
@@ -219,7 +208,7 @@ sub RepositoryList {
     return @Data;
 }
 
-=item RepositoryGet()
+=head2 RepositoryGet()
 
 get a package from local repository
 
@@ -229,9 +218,10 @@ get a package from local repository
     );
 
     my $PackageScalar = $PackageObject->RepositoryGet(
-        Name    => 'Application A',
-        Version => '1.0',
-        Result  => 'SCALAR',
+        Name            => 'Application A',
+        Version         => '1.0',
+        Result          => 'SCALAR',
+        DisableWarnings => 1,                 # optional
     );
 
 =cut
@@ -279,10 +269,14 @@ sub RepositoryGet {
     }
 
     if ( !$Package ) {
+
+        return if $Param{DisableWarnings};
+
         $Kernel::OM->Get('Kernel::System::Log')->Log(
             Priority => 'notice',
             Message  => "No such package: $Param{Name}-$Param{Version}!",
         );
+
         return;
     }
 
@@ -298,13 +292,13 @@ sub RepositoryGet {
     return $Package;
 }
 
-=item RepositoryAdd()
+=head2 RepositoryAdd()
 
 add a package to local repository
 
     $PackageObject->RepositoryAdd(
-        String => $FileString,
-        FromCloud => 0, # optional 1 or 0, it indicates if package came from Cloud or not
+        String    => $FileString,
+        FromCloud => 0,             # optional 1 or 0, it indicates if package came from Cloud or not
     );
 
 =cut
@@ -351,9 +345,10 @@ sub RepositoryAdd {
 
     # check if package already exists
     my $PackageExists = $Self->RepositoryGet(
-        Name    => $Structure{Name}->{Content},
-        Version => $Structure{Version}->{Content},
-        Result  => 'SCALAR',
+        Name            => $Structure{Name}->{Content},
+        Version         => $Structure{Version}->{Content},
+        Result          => 'SCALAR',
+        DisableWarnings => 1,
     );
 
     # get database object
@@ -373,7 +368,8 @@ sub RepositoryAdd {
         SQL => 'INSERT INTO package_repository (name, version, vendor, filename, '
             . ' content_type, content, install_status, '
             . ' create_time, create_by, change_time, change_by)'
-            . ' VALUES  (?, ?, ?, ?, \'text/xml\', ?, \'not installed\', '
+            . ' VALUES  (?, ?, ?, ?, \'text/xml\', ?, \''
+            . Translatable('not installed') . '\', '
             . ' current_timestamp, 1, current_timestamp, 1)',
         Bind => [
             \$Structure{Name}->{Content}, \$Structure{Version}->{Content},
@@ -389,7 +385,7 @@ sub RepositoryAdd {
     return 1;
 }
 
-=item RepositoryRemove()
+=head2 RepositoryRemove()
 
 remove a package from local repository
 
@@ -422,7 +418,7 @@ sub RepositoryRemove {
 
     return if !$Kernel::OM->Get('Kernel::System::DB')->Do(
         SQL  => $SQL,
-        Bind => \@Bind
+        Bind => \@Bind,
     );
 
     # get cache object
@@ -439,13 +435,13 @@ sub RepositoryRemove {
     return 1;
 }
 
-=item PackageInstall()
+=head2 PackageInstall()
 
 install a package
 
     $PackageObject->PackageInstall(
-        String    => $FileString
-        FromCloud => 1, # optional 1 or 0, it indicates if package's origin is Cloud or not
+        String    => $FileString,
+        FromCloud => 1,             # optional 1 or 0, it indicates if package's origin is Cloud or not
     );
 
 =cut
@@ -478,6 +474,9 @@ sub PackageInstall {
             return $Self->PackageUpgrade(%Param);
         }
     }
+
+    # write permission check
+    return if !$Self->_FileSystemCheck();
 
     # check OS
     if ( $Structure{OS} && !$Param{Force} ) {
@@ -517,12 +516,6 @@ sub PackageInstall {
 
     # check files
     my $FileCheckOk = 1;
-    if ( $Structure{Filelist} && ref $Structure{Filelist} eq 'ARRAY' ) {
-        for my $File ( @{ $Structure{Filelist} } ) {
-
-            #print STDERR "Notice: Want to install $File->{Location}!\n";
-        }
-    }
     if ( !$FileCheckOk && !$Param{Force} ) {
         $Kernel::OM->Get('Kernel::System::Log')->Log(
             Priority => 'error',
@@ -567,12 +560,13 @@ sub PackageInstall {
     # add package
     return if !$Self->RepositoryAdd(
         String    => $Param{String},
-        FromCloud => $FromCloud
+        FromCloud => $FromCloud,
     );
 
     # update package status
     return if !$Kernel::OM->Get('Kernel::System::DB')->Do(
-        SQL => 'UPDATE package_repository SET install_status = \'installed\''
+        SQL => 'UPDATE package_repository SET install_status = \''
+            . Translatable('installed') . '\''
             . ' WHERE name = ? AND version = ?',
         Bind => [
             \$Structure{Name}->{Content},
@@ -622,7 +616,7 @@ sub PackageInstall {
     return 1;
 }
 
-=item PackageReinstall()
+=head2 PackageReinstall()
 
 reinstall files of a package
 
@@ -644,6 +638,9 @@ sub PackageReinstall {
 
     # parse source file
     my %Structure = $Self->PackageParse(%Param);
+
+    # write permission check
+    return if !$Self->_FileSystemCheck();
 
     # check OS
     if ( $Structure{OS} && !$Param{Force} ) {
@@ -671,7 +668,7 @@ sub PackageReinstall {
             # install file
             $Self->_FileInstall(
                 File      => $File,
-                Reinstall => 1
+                Reinstall => 1,
             );
         }
     }
@@ -708,7 +705,7 @@ sub PackageReinstall {
     return 1;
 }
 
-=item PackageUpgrade()
+=head2 PackageUpgrade()
 
 upgrade a package
 
@@ -718,8 +715,6 @@ upgrade a package
 
 sub PackageUpgrade {
     my ( $Self, %Param ) = @_;
-
-    my %InstalledStructure;
 
     # check needed stuff
     if ( !defined $Param{String} ) {
@@ -734,10 +729,13 @@ sub PackageUpgrade {
     my %Structure = $Self->PackageParse(%Param);
 
     # check if package is already installed
+    my %InstalledStructure;
     my $Installed        = 0;
     my $InstalledVersion = 0;
     for my $Package ( $Self->RepositoryList() ) {
+
         if ( $Structure{Name}->{Content} eq $Package->{Name}->{Content} ) {
+
             if ( $Package->{Status} =~ /^installed$/i ) {
                 $Installed          = 1;
                 $InstalledVersion   = $Package->{Version}->{Content};
@@ -745,6 +743,7 @@ sub PackageUpgrade {
             }
         }
     }
+
     if ( !$Installed ) {
         $Kernel::OM->Get('Kernel::System::Log')->Log(
             Priority => 'error',
@@ -752,6 +751,9 @@ sub PackageUpgrade {
         );
         return;
     }
+
+    # write permission check
+    return if !$Self->_FileSystemCheck();
 
     # check OS
     if ( $Structure{OS} && !$Param{Force} ) {
@@ -835,7 +837,8 @@ sub PackageUpgrade {
 
     # update package status
     return if !$Kernel::OM->Get('Kernel::System::DB')->Do(
-        SQL => 'UPDATE package_repository SET install_status = \'installed\''
+        SQL => 'UPDATE package_repository SET install_status = \''
+            . Translatable('installed') . '\''
             . ' WHERE name = ? AND version = ?',
         Bind => [
             \$Structure{Name}->{Content}, \$Structure{Version}->{Content},
@@ -897,8 +900,8 @@ sub PackageUpgrade {
 
                 if (
                     $Part->{TagType} eq 'End'
-                    && $Part->{Tag} eq $NotUseTag
-                    && $Part->{TagLevel} eq $NotUseTagLevel
+                    && ( defined $NotUseTag      && $Part->{Tag} eq $NotUseTag )
+                    && ( defined $NotUseTagLevel && $Part->{TagLevel} eq $NotUseTagLevel )
                     )
                 {
                     $UseInstalled = 1;
@@ -1112,7 +1115,7 @@ sub PackageUpgrade {
     return 1;
 }
 
-=item PackageUninstall()
+=head2 PackageUninstall()
 
 uninstall a package
 
@@ -1139,6 +1142,9 @@ sub PackageUninstall {
     if ( !$Param{Force} ) {
         return if !$Self->_CheckPackageDepends( Name => $Structure{Name}->{Content} );
     }
+
+    # write permission check
+    return if !$Self->_FileSystemCheck();
 
     # uninstall code (pre)
     if ( $Structure{CodeUninstall} ) {
@@ -1207,7 +1213,7 @@ sub PackageUninstall {
     return 1;
 }
 
-=item PackageOnlineRepositories()
+=head2 PackageOnlineRepositories()
 
 returns a list of available online repositories
 
@@ -1261,7 +1267,7 @@ sub PackageOnlineRepositories {
     return %List;
 }
 
-=item PackageOnlineList()
+=head2 PackageOnlineList()
 
 returns a list of available on-line packages
 
@@ -1324,7 +1330,7 @@ sub PackageOnlineList {
         if ( !@XMLARRAY ) {
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'error',
-                Message  => 'Unable to parse repository index document.',
+                Message  => Translatable('Unable to parse repository index document.'),
             );
             return;
         }
@@ -1389,8 +1395,11 @@ sub PackageOnlineList {
         my $CurrentFramework = $Kernel::OM->Get('Kernel::Config')->Get('Version');
         FRAMEWORKVERSION:
         for my $FrameworkVersion ( sort keys %{$ListResult} ) {
+            my $FrameworkVersionMatch = $FrameworkVersion;
+            $FrameworkVersionMatch =~ s/\./\\\./g;
+            $FrameworkVersionMatch =~ s/x/.+?/gi;
 
-            if ( $CurrentFramework =~ m{ \A $FrameworkVersion }xms ) {
+            if ( $CurrentFramework =~ m{ \A $FrameworkVersionMatch }xms ) {
 
                 @Packages = @{ $ListResult->{$FrameworkVersion} };
                 last FRAMEWORKVERSION;
@@ -1432,7 +1441,9 @@ sub PackageOnlineList {
         $Kernel::OM->Get('Kernel::System::Log')->Log(
             Priority => 'error',
             Message =>
-                'No packages for your framework version found in this repository, it only contains packages for other framework versions.',
+                Translatable(
+                'No packages for your framework version found in this repository, it only contains packages for other framework versions.'
+                ),
         );
     }
     @Packages = @NewPackages;
@@ -1522,7 +1533,7 @@ sub PackageOnlineList {
     return @Packages;
 }
 
-=item PackageOnlineGet()
+=head2 PackageOnlineGet()
 
 download of an online package and put it into the local repository
 
@@ -1548,7 +1559,10 @@ sub PackageOnlineGet {
     }
 
     #check if file might be retrieved from cloud
-    my $RepositoryCloudList = $Self->RepositoryCloudList();
+    my $RepositoryCloudList;
+    if ( !$Self->{CloudServicesDisabled} ) {
+        $RepositoryCloudList = $Self->RepositoryCloudList();
+    }
     if ( IsHashRefWithData($RepositoryCloudList) && $RepositoryCloudList->{ $Param{Source} } ) {
 
         my $PackageFromCloud;
@@ -1583,7 +1597,7 @@ sub PackageOnlineGet {
     return $Self->_Download( URL => $Param{Source} . '/' . $Param{File} );
 }
 
-=item DeployCheck()
+=head2 DeployCheck()
 
 check if package (files) is deployed, returns true if it's ok
 
@@ -1652,7 +1666,7 @@ sub DeployCheck {
 
                 if ( ${$Content} ne $File->{Content} ) {
 
-                    if ( $Param{Log} ) {
+                    if ( $Param{Log} && !$Kernel::OM->Get('Kernel::Config')->Get('Package::AllowLocalModifications') ) {
                         $Kernel::OM->Get('Kernel::System::Log')->Log(
                             Priority => 'error',
                             Message  => "$Param{Name}-$Param{Version}: $LocalFile is different!",
@@ -1681,7 +1695,7 @@ sub DeployCheck {
     return 1;
 }
 
-=item DeployCheckInfo()
+=head2 DeployCheckInfo()
 
 returns the info of the latest DeployCheck(), what's not deployed correctly
 
@@ -1698,7 +1712,7 @@ sub DeployCheckInfo {
     return ();
 }
 
-=item PackageVerify()
+=head2 PackageVerify()
 
 check if package is verified by the vendor
 
@@ -1737,12 +1751,19 @@ sub PackageVerify {
         return;
     }
 
+    # return package as verified if cloud services are disabled
+    if ( $Self->{CloudServicesDisabled} ) {
+        return 'verified';
+    }
+
     # define package verification info
     my $PackageVerifyInfo = {
         Description =>
-            "<br>If you continue to install this package, the following issues may occur!<br><br>&nbsp;-Security problems<br>&nbsp;-Stability problems<br>&nbsp;-Performance problems<br><br>Please note that issues that are caused by working with this package are not covered by OTRS service contracts!<br><br>",
+            Translatable(
+            "<br>If you continue to install this package, the following issues may occur!<br><br>&nbsp;-Security problems<br>&nbsp;-Stability problems<br>&nbsp;-Performance problems<br><br>Please note that issues that are caused by working with this package are not covered by OTRS service contracts!<br><br>"
+            ),
         Title =>
-            'Package not verified by the OTRS Group! It is recommended not to use this package.',
+            Translatable('Package not verified by the OTRS Group! It is recommended not to use this package.'),
     };
 
     # investigate name
@@ -1835,7 +1856,7 @@ sub PackageVerify {
     return $PackageVerify;
 }
 
-=item PackageVerifyInfo()
+=head2 PackageVerifyInfo()
 
 returns the info of the latest PackageVerify()
 
@@ -1853,7 +1874,7 @@ sub PackageVerifyInfo {
     return %{ $Self->{PackageVerifyInfo} };
 }
 
-=item PackageVerifyAll()
+=head2 PackageVerifyAll()
 
 check if all installed packages are installed by the vendor
 returns a hash with package names and verification status.
@@ -1911,6 +1932,7 @@ sub PackageVerifyAll {
     }
 
     return %Result if !@PackagesToVerify;
+    return %Result if $Self->{CloudServicesDisabled};
 
     my $CloudService = 'PackageManagement';
     my $Operation    = 'PackageVerify';
@@ -1979,7 +2001,7 @@ sub PackageVerifyAll {
     return %Result;
 }
 
-=item PackageBuild()
+=head2 PackageBuild()
 
 build an opm package
 
@@ -2299,7 +2321,7 @@ sub PackageBuild {
     return $XML;
 }
 
-=item PackageParse()
+=head2 PackageParse()
 
 parse a package
 
@@ -2500,7 +2522,7 @@ sub PackageParse {
     return %Package;
 }
 
-=item PackageExport()
+=head2 PackageExport()
 
 export files of an package
 
@@ -2543,7 +2565,7 @@ sub PackageExport {
     return 1;
 }
 
-=item PackageIsInstalled()
+=head2 PackageIsInstalled()
 
 returns true if the package is already installed
 
@@ -2589,7 +2611,7 @@ sub PackageIsInstalled {
     return $Flag;
 }
 
-=item PackageInstallDefaultFiles()
+=head2 PackageInstallDefaultFiles()
 
 returns true if the distribution package (located under ) can get installed
 
@@ -2599,6 +2621,9 @@ returns true if the distribution package (located under ) can get installed
 
 sub PackageInstallDefaultFiles {
     my ( $Self, %Param ) = @_;
+
+    # write permission check
+    return if !$Self->_FileSystemCheck();
 
     # get main object
     my $MainObject = $Kernel::OM->Get('Kernel::System::Main');
@@ -2639,7 +2664,7 @@ sub PackageInstallDefaultFiles {
     return 1;
 }
 
-=item PackageFileGetMD5Sum()
+=head2 PackageFileGetMD5Sum()
 
 generates a MD5 Sum for all files in a given package
 
@@ -2903,6 +2928,17 @@ sub _OSCheck {
     return;
 }
 
+=head2 _CheckFramework()
+
+Compare a framework array with the current framework.
+
+    my $CheckOk = $PackageObject->_CheckFramework(
+        Framework       => $Structure{Framework}, # [ { 'Content' => '4.0.x', 'Minimum' => '4.0.4'} ]
+        NoLog           => 1, # optional
+    )
+
+=cut
+
 sub _CheckFramework {
     my ( $Self, %Param ) = @_;
 
@@ -2935,6 +2971,7 @@ sub _CheckFramework {
 
             next FW if !$FW;
 
+            # add framework versions for the log entry
             $PossibleFramework .= $FW->{Content} . ';';
 
             # regexp modify
@@ -2942,11 +2979,107 @@ sub _CheckFramework {
             $Framework =~ s/\./\\\./g;
             $Framework =~ s/x/.+?/gi;
 
+            # skip to next framework, if we get no positive match
             next FW if $CurrentFramework !~ /^$Framework$/i;
 
+            # framework is correct
             $FWCheck = 1;
 
-            last FW;
+            # get minimum and/or maximum values
+            # e.g. the opm contains <Framework Minimum="5.0.7" Maximum="5.0.12">5.0.x</Framework>
+            my $FrameworkMinimum = $FW->{Minimum} || '';
+            my $FrameworkMaximum = $FW->{Maximum} || '';
+
+            # check for minimum or maximum required framework, if it was defined
+            if ( $FrameworkMinimum || $FrameworkMaximum ) {
+
+                # prepare hash for framework comparsion
+                my %FrameworkComparsion;
+                $FrameworkComparsion{MinimumFrameworkRequired} = $FrameworkMinimum;
+                $FrameworkComparsion{MaximumFrameworkRequired} = $FrameworkMaximum;
+                $FrameworkComparsion{CurrentFramework}         = $CurrentFramework;
+
+                # prepare version parts hash
+                my %VersionParts;
+
+                TYPE:
+                for my $Type (qw(MinimumFrameworkRequired MaximumFrameworkRequired CurrentFramework)) {
+
+                    # split version string
+                    my @ThisVersionParts = split /\./, $FrameworkComparsion{$Type};
+                    $VersionParts{$Type} = \@ThisVersionParts;
+                }
+
+                # check minimum required framework
+                if ($FrameworkMinimum) {
+
+                    COUNT:
+                    for my $Count ( 0 .. 2 ) {
+
+                        $VersionParts{MinimumFrameworkRequired}->[$Count] ||= 0;
+                        $VersionParts{CurrentFramework}->[$Count]         ||= 0;
+
+                        # skip equal version parts
+                        next COUNT
+                            if $VersionParts{MinimumFrameworkRequired}->[$Count] eq
+                            $VersionParts{CurrentFramework}->[$Count];
+
+                        # skip current framework verion parts containing "x"
+                        next COUNT if $VersionParts{CurrentFramework}->[$Count] =~ /x/;
+
+                        if (
+                            $VersionParts{CurrentFramework}->[$Count]
+                            > $VersionParts{MinimumFrameworkRequired}->[$Count]
+                            )
+                        {
+                            $FWCheck = 1;
+                            last COUNT;
+                        }
+                        else {
+
+                            # add required minimum version for the log entry
+                            $PossibleFramework .= 'Minimum Version ' . $FrameworkMinimum . ';';
+                            $FWCheck = 0;
+                        }
+
+                    }
+                }
+
+                # check maximum required framework, if the framework check is still positive so far
+                if ( $FrameworkMaximum && $FWCheck ) {
+
+                    COUNT:
+                    for my $Count ( 0 .. 2 ) {
+
+                        $VersionParts{MaximumFrameworkRequired}->[$Count] ||= 0;
+                        $VersionParts{CurrentFramework}->[$Count]         ||= 0;
+
+                        next COUNT
+                            if $VersionParts{MaximumFrameworkRequired}->[$Count] eq
+                            $VersionParts{CurrentFramework}->[$Count];
+
+                        # skip current framework verion parts containing "x"
+                        next COUNT if $VersionParts{CurrentFramework}->[$Count] =~ /x/;
+
+                        if (
+                            $VersionParts{CurrentFramework}->[$Count]
+                            < $VersionParts{MaximumFrameworkRequired}->[$Count]
+                            )
+                        {
+
+                            $FWCheck = 1;
+                            last COUNT;
+                        }
+                        else {
+
+                            # add required maximum version for the log entry
+                            $PossibleFramework .= 'Maximum Version ' . $FrameworkMaximum . ';';
+                            $FWCheck = 0;
+                        }
+
+                    }
+                }
+            }
         }
     }
 
@@ -2962,7 +3095,7 @@ sub _CheckFramework {
     return;
 }
 
-=item _CheckVersion()
+=head2 _CheckVersion()
 
 Compare the two version strings $VersionNew and $VersionInstalled.
 The type is either 'Min' or 'Max'.
@@ -3542,6 +3675,8 @@ sub _ReadDistArchive {
 sub _FileSystemCheck {
     my ( $Self, %Param ) = @_;
 
+    return 1 if $Self->{FileSystemCheckAlreadyDone};
+
     my $Home = $Param{Home} || $Self->{Home};
 
     # check Home
@@ -3553,29 +3688,31 @@ sub _FileSystemCheck {
         return;
     }
 
-    # get main object
-    my $MainObject = $Kernel::OM->Get('Kernel::System::Main');
+    my @Filepaths = (
+        '/bin/',
+        '/Kernel/',
+        '/Kernel/System/',
+        '/Kernel/Output/',
+        '/Kernel/Output/HTML/',
+        '/Kernel/Modules/',
+    );
 
-    # create test files in following directories
-    for my $Filepath (
-        qw(/bin/ /Kernel/ /Kernel/System/ /Kernel/Output/ /Kernel/Output/HTML/ /Kernel/Modules/)
-        )
-    {
-        my $Location = "$Home/$Filepath/check_permissons.$$";
-        my $Content  = 'test';
+    # check write permissions
+    FILEPATH:
+    for my $Filepath (@Filepaths) {
 
-        # create test file
-        my $Write = $MainObject->FileWrite(
-            Location => $Location,
-            Content  => \$Content,
+        next FILEPATH if -w $Home . $Filepath;
+
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "ERROR: Need write permissions for directory $Home$Filepath\n"
+                . " Try: $Home/bin/otrs.SetPermissions.pl!",
         );
 
-        # return false if not created
-        return if !$Write;
-
-        # delete test file
-        $MainObject->FileDelete( Location => $Location );
+        return;
     }
+
+    $Self->{FileSystemCheckAlreadyDone} = 1;
 
     return 1;
 }
@@ -3593,7 +3730,7 @@ sub _Encode {
     return $Text;
 }
 
-=item _PackageUninstallMerged()
+=head2 _PackageUninstallMerged()
 
 ONLY CALL THIS METHOD FROM A DATABASE UPGRADING SCRIPT DURING FRAMEWORK UPDATES
 OR FROM A CODEUPGRADE SECTION IN AN SOPM FILE OF A PACKAGE THAT INCLUDES A MERGED FEATURE ADDON.
@@ -3926,8 +4063,8 @@ sub _CheckDBMerged {
 
             if (
                 $Part->{TagType} eq 'End'
-                && $Part->{Tag} eq $NotUseTag
-                && $Part->{TagLevel} eq $NotUseTagLevel
+                && ( defined $NotUseTag      && $Part->{Tag} eq $NotUseTag )
+                && ( defined $NotUseTagLevel && $Part->{TagLevel} eq $NotUseTagLevel )
                 )
             {
                 $Use = 1;
@@ -3961,7 +4098,7 @@ sub _CheckDBMerged {
     return \@Parts;
 }
 
-=item RepositoryCloudList()
+=head2 RepositoryCloudList()
 
 returns a list of available cloud repositories
 
@@ -4006,7 +4143,7 @@ sub RepositoryCloudList {
     return $RepositoryResult;
 }
 
-=item CloudFileGet()
+=head2 CloudFileGet()
 
 returns a file from cloud
 
@@ -4022,6 +4159,8 @@ returns a file from cloud
 
 sub CloudFileGet {
     my ( $Self, %Param ) = @_;
+
+    return if $Self->{CloudServicesDisabled};
 
     # check needed stuff
     if ( !defined $Param{Operation} ) {
@@ -4112,8 +4251,6 @@ sub DESTROY {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

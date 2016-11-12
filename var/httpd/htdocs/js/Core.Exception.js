@@ -1,5 +1,5 @@
 // --
-// Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+// Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 // --
 // This software comes with ABSOLUTELY NO WARRANTY. For details, see
 // the enclosed file COPYING for license information (AGPL). If you
@@ -32,10 +32,11 @@ Core.Exception = (function (TargetNS) {
          *  the current page is about to be left. Then AJAX errors because of
          *  pending AJAX requests must be suppressed.
          */
-        $(window).bind('beforeunload.Exception', function(){
+        $(window).on('beforeunload.Exception', function(){
             // Use a public member so that we can also set it from a test case.
             TargetNS.AboutToLeave = true;
         });
+
     };
 
     /**
@@ -96,7 +97,7 @@ Core.Exception = (function (TargetNS) {
     };
 
     /**
-     * @name Throw
+     * @name IsErrorOfType
      * @memberof Core.Exception
      * @function
      * @returns {Boolean} True, if ErrorObject is of given type, false otherwise.
@@ -106,12 +107,12 @@ Core.Exception = (function (TargetNS) {
      *      Checks if the given ErrorObject is an ApplicationError of the given Type.
      */
     TargetNS.IsErrorOfType = function (ErrorObject, ErrorType) {
-        return (ErrorObject instanceof TargetNS.ApplicationError && ErrorObject.GetType === ErrorType);
+        return (ErrorObject instanceof TargetNS.ApplicationError && ErrorObject.GetType() === ErrorType);
     };
 
     /**
-     * @name Throw
-     * @memberof Core.HandleFinalError
+     * @name HandleFinalError
+     * @memberof Core.Exception
      * @function
      * @returns {Boolean} If the error could be handled, returns if it was shown to the user or not.
      * @param {Object} ErrorObject - The error object
@@ -121,6 +122,9 @@ Core.Exception = (function (TargetNS) {
      */
     TargetNS.HandleFinalError = function (ErrorObject, Trace) {
         var UserErrorMessage = 'An error occurred! Do you want to see the complete error message?';
+        if (typeof Core.Language !== 'undefined') {
+            UserErrorMessage = Core.Language.Translate('An error occurred! Do you want to see the complete error message?')
+        }
 
         if (ErrorObject instanceof TargetNS.ApplicationError) {
             // Suppress AJAX errors which were raised by leaving the page while the AJAX call was still running.
@@ -151,7 +155,7 @@ Core.Exception = (function (TargetNS) {
 
     /**
      * @name ShowError
-     * @memberof Core.HandleFinalError
+     * @memberof Core.Exception
      * @function
      * @param {String} ErrorMessage - The error message.
      * @param {String} ErrorType - The error type.
@@ -165,6 +169,8 @@ Core.Exception = (function (TargetNS) {
             Core.Debug.Log('[STACKTRACE] ' + Trace);
         }
     };
+
+    Core.Init.RegisterNamespace(TargetNS, 'DOCUMENT_READY');
 
     return TargetNS;
 }(Core.Exception || {}));

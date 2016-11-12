@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -18,24 +18,23 @@ for my $Module ( 'RuntimeDB', 'StaticDB' ) {
     # make sure that the TicketObject gets recreated for each loop.
     $Kernel::OM->ObjectsDiscard( Objects => ['Kernel::System::Ticket'] );
 
-    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
-    my $UserObject   = $Kernel::OM->Get('Kernel::System::User');
-    my $QueueObject  = $Kernel::OM->Get('Kernel::System::Queue');
+    # get helper object
+    $Kernel::OM->ObjectParamAdd(
+        'Kernel::System::UnitTest::Helper' => {
+            RestoreDatabase => 1,
+        },
+    );
+    my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-    my $QueueID = $QueueObject->QueueLookup( Queue => 'Raw' );
+    my $QueueID = $Kernel::OM->Get('Kernel::System::Queue')->QueueLookup( Queue => 'Raw' );
 
-    $ConfigObject->Set(
+    $Kernel::OM->Get('Kernel::Config')->Set(
         Key   => 'Ticket::IndexModule',
         Value => "Kernel::System::Ticket::IndexAccelerator::$Module",
     );
 
     # create test ticket object
     my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
-
-    $Self->True(
-        $TicketObject->isa("Kernel::System::Ticket::IndexAccelerator::$Module"),
-        "TicketObject loaded the correct backend",
-    );
 
     my @TicketIDs;
     my $TicketID = $TicketObject->TicketCreate(
@@ -299,9 +298,6 @@ for my $Module ( 'RuntimeDB', 'StaticDB' ) {
 
         for my $Index ( 1 .. 3 ) {
 
-            # generate a random number for the time units
-            my $RandomNumber = int( rand(100) ) + 1;
-
             my $ArticleID = $TicketObject->ArticleCreate(
                 TicketID       => $TicketID,
                 ArticleType    => 'note-internal',
@@ -322,13 +318,13 @@ for my $Module ( 'RuntimeDB', 'StaticDB' ) {
                 $TicketObject->TicketAccountTime(
                     TicketID  => $TicketID,
                     ArticleID => $ArticleID,
-                    TimeUnit  => $RandomNumber,
+                    TimeUnit  => $Index,
                     UserID    => 1,
                 ),
                 "Add accounted time",
             );
 
-            $AccountedTimes[$Position] += $RandomNumber;
+            $AccountedTimes[$Position] += $Index;
         }
 
         # verify accounted time
@@ -358,17 +354,8 @@ for my $Module ( 'RuntimeDB', 'StaticDB' ) {
         $AccountedTimes[0] + $AccountedTimes[ $ArraySize - 1 ],
         "Merged ticket accounted time",
     );
-
-    # delete tickets
-    for my $TicketID (@TicketIDs) {
-        $Self->True(
-            $TicketObject->TicketDelete(
-                TicketID => $TicketID,
-                UserID   => 1,
-            ),
-            "$Module TicketDelete()",
-        );
-    }
 }
+
+# cleanup is done by RestoreDatabase.
 
 1;

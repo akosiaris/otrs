@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -10,6 +10,8 @@ package Kernel::Modules::AdminUser;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -35,7 +37,8 @@ sub Run {
     my $MainObject      = $Kernel::OM->Get('Kernel::System::Main');
     my $CheckItemObject = $Kernel::OM->Get('Kernel::System::CheckItem');
 
-    my $Search = $ParamObject->GetParam( Param => 'Search' ) || '';
+    my $Search       = $ParamObject->GetParam( Param => 'Search' )       || '';
+    my $Notification = $ParamObject->GetParam( Param => 'Notification' ) || '';
 
     # ------------------------------------------------------------ #
     #  switch to user
@@ -138,6 +141,9 @@ sub Run {
         );
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
+        $Output .= $LayoutObject->Notify( Info => Translatable('Agent updated!') )
+            if ( $Notification && $Notification eq 'Update' );
+
         $Self->_Edit(
             Action => 'Change',
             Search => $Search,
@@ -210,6 +216,9 @@ sub Run {
 
                 GROUP:
                 for my $Group ( sort keys %Preferences ) {
+
+                    # skip groups should be changed in
+                    # AgentPreferences screen
                     next GROUP if $Group eq 'Password';
 
                     # get user data
@@ -253,16 +262,18 @@ sub Run {
                 }
 
                 if ( !$Note ) {
-                    $Self->_Overview( Search => $Search );
-                    my $Output = $LayoutObject->Header();
-                    $Output .= $LayoutObject->NavigationBar();
-                    $Output .= $LayoutObject->Notify( Info => 'Agent updated!' );
-                    $Output .= $LayoutObject->Output(
-                        TemplateFile => 'AdminUser',
-                        Data         => \%Param,
-                    );
-                    $Output .= $LayoutObject->Footer();
-                    return $Output;
+
+                    # if the user would like to continue editing the agent, just redirect to the edit screen
+                    # otherwise return to overview
+                    if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+                        my $ID = $ParamObject->GetParam( Param => 'ID' ) || '';
+                        return $LayoutObject->Redirect(
+                            OP => "Action=$Self->{Action};Subaction=Change;UserID=$GetParam{UserID};Notification=Update"
+                        );
+                    }
+                    else {
+                        return $LayoutObject->Redirect( OP => "Action=$Self->{Action};Notification=Update" );
+                    }
                 }
             }
             else {
@@ -473,6 +484,9 @@ sub Run {
         $Self->_Overview( Search => $Search );
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
+        $Output .= $LayoutObject->Notify( Info => Translatable('Agent updated!') )
+            if ( $Notification && $Notification eq 'Update' );
+
         $Output .= $LayoutObject->Output(
             TemplateFile => 'AdminUser',
             Data         => \%Param,
@@ -517,7 +531,6 @@ sub _Edit {
     }
     else {
         $LayoutObject->Block( Name => 'HeaderAdd' );
-        $LayoutObject->Block( Name => 'MarkerMandatory' );
         $LayoutObject->Block(
             Name => 'ShowPasswordHint',
         );
@@ -657,13 +670,54 @@ sub _Overview {
     );
 
     $LayoutObject->Block( Name => 'ActionList' );
-    $LayoutObject->Block( Name => 'ActionSearch' );
+    $LayoutObject->Block(
+        Name => 'ActionSearch',
+        Data => \%Param,
+    );
     $LayoutObject->Block( Name => 'ActionAdd' );
 
-    $LayoutObject->Block(
-        Name => 'OverviewHeader',
-        Data => {},
+    # get user object
+    my $UserObject = $Kernel::OM->Get('Kernel::System::User');
+
+    # ShownUsers limitation in AdminUser
+    my $Limit = 400;
+
+    my %List = $UserObject->UserSearch(
+        Search => $Param{Search} . '*',
+        Limit  => $Limit,
+        Valid  => 0,
     );
+
+    my %ListAllItems = $UserObject->UserSearch(
+        Search => $Param{Search} . '*',
+        Limit  => $Limit + 1,
+        Valid  => 0,
+    );
+
+    if ( keys %ListAllItems <= $Limit ) {
+        my $ListAllItems = keys %ListAllItems;
+        $LayoutObject->Block(
+            Name => 'OverviewHeader',
+            Data => {
+                ListAll => $ListAllItems,
+                Limit   => $Limit,
+            },
+        );
+    }
+    else {
+        my $ListAllSize    = keys %ListAllItems;
+        my $SearchListSize = keys %List;
+
+        $LayoutObject->Block(
+            Name => 'OverviewHeader',
+            Data => {
+                SearchListSize => $SearchListSize,
+                ListAll        => $ListAllSize,
+                Limit          => $Limit,
+            },
+        );
+
+    }
 
     $LayoutObject->Block(
         Name => 'OverviewResult',
@@ -679,15 +733,6 @@ sub _Overview {
             Name => 'OverviewResultSwitchToUser',
         );
     }
-
-    # get user object
-    my $UserObject = $Kernel::OM->Get('Kernel::System::User');
-
-    my %List = $UserObject->UserSearch(
-        Search => $Param{Search} . '*',
-        Limit  => 400,
-        Valid  => 0,
-    );
 
     # get valid list
     my %ValidList = $Kernel::OM->Get('Kernel::System::Valid')->ValidList();

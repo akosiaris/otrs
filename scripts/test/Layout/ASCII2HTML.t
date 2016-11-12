@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,17 +12,8 @@ use utf8;
 
 use vars (qw($Self));
 
-use Kernel::Output::HTML::Layout;
-
-# get needed objects
-my $ParamObject = $Kernel::OM->Get('Kernel::System::Web::Request');
-
-my $LayoutObject = Kernel::Output::HTML::Layout->new(
-    UserChallengeToken => 'TestToken',
-    UserID             => 1,
-    Lang               => 'de',
-    SessionID          => 123,
-);
+# get layout object
+my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
 
 # check the function Ascii2Html
 my $TestString = << 'END_STRING';
@@ -113,7 +104,7 @@ lkj <a href="https://portal.example.com/otrs/index.pl?Action=AgentFileManager&Lo
 lk<br/>
 END_RESULT
 
-# html quoting
+# HTML quoting
 my $ConvertedString = $LayoutObject->Ascii2Html(
     NewLine        => 90,
     Text           => $TestString,
@@ -128,7 +119,7 @@ $Self->Is(
     'Ascii2Html() - Check if the link feature works correct',
 );
 
-# html quoting 2
+# HTML quoting 2
 my @Tests = (
     {
         Name   => 'Ascii2Html() - #1',
@@ -283,10 +274,17 @@ my @Tests = (
         Result => "http.<br/>\nsome text http.<br/>\nsome text http. some text<br/>\n",
     },
     {
-        Name   => 'Ascii2Html() - #27 ftp-check',
+        Name   => 'Ascii2Html() - #28 ftp-check',
         String => "ftp.example.com",
         Result =>
             "<a href=\"ftp://ftp.example.com\" target=\"_blank\" title=\"ftp://ftp.example.com\">ftp://ftp.example.com</a>",
+    },
+    {
+        Name   => 'Ascii2Html() - #29 brackets in url',                      # bug#12222
+        String => "http://wwww.exaple.com?Action=ActionName#position(12)",
+        Result =>
+            "<a href=\"http://wwww.exaple.com?Action=ActionName#position(12)\" target=\"_blank\" " .
+            "title=\"http://wwww.exaple.com?Action=ActionName#position(12)\">http://wwww.exaple.com?Action=ActionName#position(12)</a>",
     },
 );
 
@@ -303,7 +301,7 @@ for my $Test (@Tests) {
     );
 }
 
-# html quoting 3
+# HTML quoting 3
 @Tests = (
     {
         Name   => 'Ascii2Html() - Max check #1',

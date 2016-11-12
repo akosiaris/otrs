@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -74,6 +74,9 @@ sub _SupportDataCollectorView {
 
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
 
+    # check if cloud services are disabled
+    my $CloudServicesDisabled = $Kernel::OM->Get('Kernel::Config')->Get('CloudServices::Disabled') || 0;
+
     if ( !$SupportData{Success} ) {
         $LayoutObject->Block(
             Name => 'SupportDataCollectionFailed',
@@ -81,7 +84,12 @@ sub _SupportDataCollectorView {
         );
     }
     else {
-        if (
+        if ($CloudServicesDisabled) {
+            $LayoutObject->Block(
+                Name => 'CloudServicesWarning',
+            );
+        }
+        elsif (
             $RegistrationState ne 'registered'
             || $SupportDataSending ne 'Yes'
             )
@@ -95,6 +103,9 @@ sub _SupportDataCollectorView {
                 Name => 'NoteRegisteredSending',
             );
         }
+        $LayoutObject->Block(
+            Name => 'NoteSupportBundle',
+        );
 
         $LayoutObject->Block(
             Name => 'SupportData',
@@ -356,7 +367,7 @@ sub _DownloadSupportBundle {
 
     if ( !$Content ) {
         return $LayoutObject->ErrorScreen(
-            Message => "File $Location could not be read!",
+            Message => $LayoutObject->{LanguageObject}->Translate( 'File %s could not be read!', $Location ),
         );
     }
 

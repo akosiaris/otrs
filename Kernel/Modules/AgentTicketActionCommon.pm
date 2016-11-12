@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -13,6 +13,7 @@ use warnings;
 
 use Kernel::System::EmailParser;
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -79,8 +80,8 @@ sub Run {
     # check needed stuff
     if ( !$Self->{TicketID} ) {
         return $LayoutObject->ErrorScreen(
-            Message => 'No TicketID is given!',
-            Comment => 'Please contact the admin.',
+            Message => Translatable('No TicketID is given!'),
+            Comment => Translatable('Please contact the administrator.'),
         );
     }
 
@@ -97,7 +98,7 @@ sub Run {
     # error screen, don't show ticket
     if ( !$Access ) {
         return $LayoutObject->NoPermission(
-            Message    => "You need $Config->{Permission} permissions!",
+            Message => $LayoutObject->{LanguageObject}->Translate( 'You need %s permissions!', $Config->{Permission} ),
             WithHeader => 'yes',
         );
     }
@@ -186,9 +187,8 @@ sub Run {
                     BodyClass => 'Popup',
                 );
                 $Output .= $LayoutObject->Warning(
-                    Message => $LayoutObject->{LanguageObject}
-                        ->Get('Sorry, you need to be the ticket owner to perform this action.'),
-                    Comment => $LayoutObject->{LanguageObject}->Get('Please change the owner first.'),
+                    Message => Translatable('Sorry, you need to be the ticket owner to perform this action.'),
+                    Comment => Translatable('Please change the owner first.'),
                 );
                 $Output .= $LayoutObject->Footer(
                     Type => 'Small',
@@ -229,6 +229,15 @@ sub Run {
         $GetParam{$Key} = $ParamObject->GetParam( Param => $Key );
     }
 
+    # ACL compatibility translation
+    my %ACLCompatGetParam = (
+        StateID       => $GetParam{StateID},
+        PriorityID    => $GetParam{NewPriorityID},
+        QueueID       => $GetParam{NewQueueID},
+        OwnerID       => $GetParam{NewOwnerID},
+        ResponsibleID => $GetParam{NewResponsibleID},
+    );
+
     # get dynamic field values form http request
     my %DynamicFieldValues;
 
@@ -255,7 +264,7 @@ sub Run {
     for my $DynamicFieldConfig ( @{$DynamicField} ) {
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         $DynamicFieldValues{ $DynamicFieldConfig->{Name} } = $DynamicFieldBackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
             ParamObject        => $ParamObject,
@@ -409,6 +418,13 @@ sub Run {
                 }
             }
 
+            # check responsible
+            if ( $Config->{Responsible} && $Config->{ResponsibleMandatory} ) {
+                if ( !$GetParam{NewResponsibleID} ) {
+                    $Error{'NewResponsibleInvalid'} = 'ServerError';
+                }
+            }
+
             # check title
             if ( $Config->{Title} && !$GetParam{Title} ) {
                 $Error{'TitleInvalid'} = 'ServerError';
@@ -456,6 +472,20 @@ sub Run {
                 )
             {
                 $Error{'SLAInvalid'} = ' ServerError';
+            }
+
+            # check mandatory queue
+            if ( $Config->{Queue} && $Config->{QueueMandatory} ) {
+                if ( !$GetParam{NewQueueID} ) {
+                    $Error{'NewQueueInvalid'} = 'ServerError';
+                }
+            }
+
+            # check mandatory state
+            if ( $Config->{State} && $Config->{StateMandatory} ) {
+                if ( !$GetParam{NewStateID} ) {
+                    $Error{'NewStateInvalid'} = 'ServerError';
+                }
             }
 
             # check time units, but only if the current screen has a note
@@ -541,8 +571,9 @@ sub Run {
                 if ( !IsHashRefWithData($ValidationResult) ) {
                     return $LayoutObject->ErrorScreen(
                         Message =>
-                            "Could not perform validation on field $DynamicFieldConfig->{Label}!",
-                        Comment => 'Please contact the admin.',
+                            $LayoutObject->{LanguageObject}
+                            ->Translate( 'Could not perform validation on field %s!', $DynamicFieldConfig->{Label} ),
+                        Comment => Translatable('Please contact the administrator.'),
                     );
                 }
 
@@ -621,6 +652,8 @@ sub Run {
         if ( $ConfigObject->Get('Ticket::Service') && $Config->{Service} ) {
             if ( defined $GetParam{ServiceID} ) {
                 $TicketObject->TicketServiceSet(
+                    %GetParam,
+                    %ACLCompatGetParam,
                     ServiceID      => $GetParam{ServiceID},
                     TicketID       => $Self->{TicketID},
                     CustomerUserID => $Ticket{CustomerUserID},
@@ -790,9 +823,51 @@ sub Run {
                 $GetParam{ArticleType} = $Config->{ArticleTypeDefault};
             }
 
+            # get pre loaded attachment
+            my @Attachments = $UploadCacheObject->FormIDGetAllFilesData(
+                FormID => $Self->{FormID},
+            );
+
+            # get submit attachment
+            my %UploadStuff = $ParamObject->GetUploadAll(
+                Param => 'FileUpload',
+            );
+            if (%UploadStuff) {
+                push @Attachments, \%UploadStuff;
+            }
+
             my $MimeType = 'text/plain';
             if ( $LayoutObject->{BrowserRichText} ) {
                 $MimeType = 'text/html';
+
+                # remove unused inline images
+                my @NewAttachmentData;
+                ATTACHMENT:
+                for my $Attachment (@Attachments) {
+                    my $ContentID = $Attachment->{ContentID};
+                    if (
+                        $ContentID
+                        && ( $Attachment->{ContentType} =~ /image/i )
+                        && ( $Attachment->{Disposition} eq 'inline' )
+                        )
+                    {
+                        my $ContentIDHTMLQuote = $LayoutObject->Ascii2Html(
+                            Text => $ContentID,
+                        );
+
+                        # workaround for link encode of rich text editor, see bug#5053
+                        my $ContentIDLinkEncode = $LayoutObject->LinkEncode($ContentID);
+                        $GetParam{Body} =~ s/(ContentID=)$ContentIDLinkEncode/$1$ContentID/g;
+
+                        # ignore attachment if not linked in body
+                        next ATTACHMENT
+                            if $GetParam{Body} !~ /(\Q$ContentIDHTMLQuote\E|\Q$ContentID\E)/i;
+                    }
+
+                    # remember inline images and normal attachments
+                    push @NewAttachmentData, \%{$Attachment};
+                }
+                @Attachments = @NewAttachmentData;
 
                 # verify html document
                 $GetParam{Body} = $LayoutObject->RichTextDocumentComplete(
@@ -813,16 +888,18 @@ sub Run {
             # get involved user list
             my @InvolvedUserID = $ParamObject->GetArray( Param => 'InvolvedUserID' );
 
+            if ( $Config->{InformAgent} ) {
+                push @NotifyUserIDs, @InformUserID;
+            }
+
+            if ( $Config->{InvolvedAgent} ) {
+                push @NotifyUserIDs, @InvolvedUserID;
+            }
+
             if ( $Self->{ReplyToArticle} ) {
-                @NotifyUserIDs = (
-                    @UserListWithoutSelection,
-                    @InformUserID,
-                    @InvolvedUserID,
-                );
+                push @NotifyUserIDs, @UserListWithoutSelection;
             }
-            else {
-                @NotifyUserIDs = ( @InformUserID, @InvolvedUserID );
-            }
+
             $ArticleID = $TicketObject->ArticleCreate(
                 TicketID                        => $Self->{TicketID},
                 SenderType                      => 'agent',
@@ -835,6 +912,7 @@ sub Run {
                 ForceNotificationToUserID       => \@NotifyUserIDs,
                 ExcludeMuteNotificationToUserID => \@NotifyDone,
                 UnlockOnAway                    => $UnlockOnAway,
+                Attachment                      => \@Attachments,
                 %GetParam,
             );
             if ( !$ArticleID ) {
@@ -847,53 +925,6 @@ sub Run {
                     TicketID  => $Self->{TicketID},
                     ArticleID => $ArticleID,
                     TimeUnit  => $GetParam{TimeUnits},
-                    UserID    => $Self->{UserID},
-                );
-            }
-
-            # get pre loaded attachment
-            my @Attachments = $UploadCacheObject->FormIDGetAllFilesData(
-                FormID => $Self->{FormID},
-            );
-
-            # get submit attachment
-            my %UploadStuff = $ParamObject->GetUploadAll(
-                Param => 'FileUpload',
-            );
-            if (%UploadStuff) {
-                push @Attachments, \%UploadStuff;
-            }
-
-            # write attachments
-            ATTACHMENT:
-            for my $Attachment (@Attachments) {
-
-                # skip, deleted not used inline images
-                my $ContentID = $Attachment->{ContentID};
-                if (
-                    $ContentID
-                    && $LayoutObject->{BrowserRichText}
-                    && ( $Attachment->{ContentType} =~ /image/i )
-                    && ( $Attachment->{Disposition} eq 'inline' )
-                    )
-                {
-                    my $ContentIDHTMLQuote = $LayoutObject->Ascii2Html(
-                        Text => $ContentID,
-                    );
-
-                    # workaround for link encode of rich text editor, see bug#5053
-                    my $ContentIDLinkEncode = $LayoutObject->LinkEncode($ContentID);
-                    $GetParam{Body} =~ s/(ContentID=)$ContentIDLinkEncode/$1$ContentID/g;
-
-                    # ignore attachment if not linked in body
-                    next ATTACHMENT
-                        if $GetParam{Body} !~ /(\Q$ContentIDHTMLQuote\E|\Q$ContentID\E)/i;
-                }
-
-                # write existing file to backend
-                $TicketObject->ArticleWriteAttachment(
-                    %{$Attachment},
-                    ArticleID => $ArticleID,
                     UserID    => $Self->{UserID},
                 );
             }
@@ -945,6 +976,7 @@ sub Run {
         }
 
         my $QueueID = $GetParam{NewQueueID} || $Ticket{QueueID};
+        my $StateID = $GetParam{NewStateID} || $Ticket{StateID};
 
         # convert dynamic field values into a structure for ACLs
         my %DynamicFieldACLParameters;
@@ -965,16 +997,19 @@ sub Run {
         my $Owners = $Self->_GetOwners(
             %GetParam,
             QueueID  => $QueueID,
+            StateID  => $StateID,
             AllUsers => $GetParam{OwnerAll},
         );
         my $OldOwners = $Self->_GetOldOwners(
             %GetParam,
             QueueID  => $QueueID,
+            StateID  => $StateID,
             AllUsers => $GetParam{OwnerAll},
         );
         my $ResponsibleUsers = $Self->_GetResponsible(
             %GetParam,
             QueueID  => $QueueID,
+            StateID  => $StateID,
             AllUsers => $GetParam{OwnerAll},
         );
         my $Priorities = $Self->_GetPriorities(
@@ -984,11 +1019,13 @@ sub Run {
             %GetParam,
             CustomerUserID => $CustomerUser,
             QueueID        => $QueueID,
+            StateID        => $StateID,
         );
         my $Types = $Self->_GetTypes(
             %GetParam,
             CustomerUserID => $CustomerUser,
             QueueID        => $QueueID,
+            StateID        => $StateID,
         );
 
         # reset previous ServiceID to reset SLA-List if no service is selected
@@ -999,12 +1036,14 @@ sub Run {
             %GetParam,
             CustomerUserID => $CustomerUser,
             QueueID        => $QueueID,
+            StateID        => $StateID,
             ServiceID      => $ServiceID,
         );
         my $NextStates = $Self->_GetNextStates(
             %GetParam,
             CustomerUserID => $CustomerUser || '',
-            QueueID => $QueueID,
+            QueueID        => $QueueID,
+            StateID        => $StateID,
         );
 
         # update Dynamic Fields Possible Values via AJAX
@@ -1298,14 +1337,9 @@ sub Run {
         # set Body var to calculated content
         $GetParam{Body} = $Body;
 
-        if ( $Self->{ReplyToArticle} && $Config->{Subject} ) {
-            my $TicketSubjectRe = $ConfigObject->Get('Ticket::SubjectRe');
-            if ($TicketSubjectRe) {
-                $GetParam{Subject} = $TicketSubjectRe . ': ' . $Self->{ReplyToArticleContent}{Subject};
-            }
-            else {
-                $GetParam{Subject} = 'Re: ' . $Self->{ReplyToArticleContent}{Subject};
-            }
+        if ( $Self->{ReplyToArticle} ) {
+            my $TicketSubjectRe = $ConfigObject->Get('Ticket::SubjectRe') || 'Re';
+            $GetParam{Subject} = $TicketSubjectRe . ': ' . $Self->{ReplyToArticleContent}{Subject};
         }
         elsif ( !defined $GetParam{Subject} && $Config->{Subject} ) {
             $GetParam{Subject} = $LayoutObject->Output(
@@ -1464,12 +1498,11 @@ sub _Mask {
         OnlyDynamicFields => 1,
     );
 
-    # create a string with the quoted dynamic field names separated by commas
-    if ( IsArrayRefWithData($DynamicFieldNames) ) {
-        for my $Field ( @{$DynamicFieldNames} ) {
-            $Param{DynamicFieldNamesStrg} .= ", '" . $Field . "'";
-        }
-    }
+    # send data to JS
+    $LayoutObject->AddJSData(
+        Key   => 'DynamicFieldNames',
+        Value => $DynamicFieldNames,
+    );
 
     # types
     if ( $ConfigObject->Get('Ticket::Type') && $Config->{TicketType} ) {
@@ -1479,7 +1512,7 @@ sub _Mask {
             UserID => $Self->{UserID},
         );
         $Param{TypeStrg} = $LayoutObject->BuildSelection(
-            Class => 'Validate_Required Modernize ' . ( $Param{Errors}->{TypeIDInvalid} || ' ' ),
+            Class => 'Validate_Required Modernize ' . ( $Param{Errors}->{TypeIDInvalid} || '' ),
             Data  => \%Type,
             Name  => 'TypeID',
             SelectedID   => $Param{TypeID},
@@ -1507,44 +1540,27 @@ sub _Mask {
             $Param{ServiceID} = '';
         }
 
-        if ( $Config->{ServiceMandatory} ) {
+        $Param{ServiceStrg} = $LayoutObject->BuildSelection(
+            Data       => $Services,
+            Name       => 'ServiceID',
+            SelectedID => $Param{ServiceID},
+            Class      => "Modernize "
+                . ( $Config->{ServiceMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{ServiceInvalid} || '' ),
+            PossibleNone => 1,
+            TreeView     => $TreeView,
+            Sort         => 'TreeView',
+            Translation  => 0,
+            Max          => 200,
+        );
 
-            $Param{ServiceStrg} = $LayoutObject->BuildSelection(
-                Data         => $Services,
-                Name         => 'ServiceID',
-                SelectedID   => $Param{ServiceID},
-                Class        => 'Validate_Required Modernize ' . ( $Param{ServiceInvalid} || ' ' ),
-                PossibleNone => 1,
-                TreeView     => $TreeView,
-                Sort         => 'TreeView',
-                Translation  => 0,
-                Max          => 200,
-            );
-
-            $LayoutObject->Block(
-                Name => 'ServiceMandatory',
-                Data => {%Param},
-            );
-        }
-        else {
-
-            $Param{ServiceStrg} = $LayoutObject->BuildSelection(
-                Data         => $Services,
-                Name         => 'ServiceID',
-                SelectedID   => $Param{ServiceID},
-                Class        => 'Modernize ' . ( $Param{ServiceInvalid} || ' ' ),
-                PossibleNone => 1,
-                TreeView     => $TreeView,
-                Sort         => 'TreeView',
-                Translation  => 0,
-                Max          => 200,
-            );
-
-            $LayoutObject->Block(
-                Name => 'Service',
-                Data => {%Param},
-            );
-        }
+        $LayoutObject->Block(
+            Name => 'Service',
+            Data => {
+                ServiceMandatory => $Config->{ServiceMandatory} || 0,
+                %Param,
+            },
+        );
 
         my %SLA = $TicketObject->TicketSLAList(
             %Param,
@@ -1552,42 +1568,26 @@ sub _Mask {
             UserID => $Self->{UserID},
         );
 
-        if ( $Config->{SLAMandatory} ) {
+        $Param{SLAStrg} = $LayoutObject->BuildSelection(
+            Data       => \%SLA,
+            Name       => 'SLAID',
+            SelectedID => $Param{SLAID},
+            Class      => "Modernize "
+                . ( $Config->{SLAMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{ServiceInvalid} || '' ),
+            PossibleNone => 1,
+            Sort         => 'AlphanumericValue',
+            Translation  => 0,
+            Max          => 200,
+        );
 
-            $Param{SLAStrg} = $LayoutObject->BuildSelection(
-                Data         => \%SLA,
-                Name         => 'SLAID',
-                SelectedID   => $Param{SLAID},
-                Class        => 'Validate_Required Modernize ' . ( $Param{SLAInvalid} || ' ' ),
-                PossibleNone => 1,
-                Sort         => 'AlphanumericValue',
-                Translation  => 0,
-                Max          => 200,
-            );
-
-            $LayoutObject->Block(
-                Name => 'SLAMandatory',
-                Data => {%Param},
-            );
-        }
-        else {
-
-            $Param{SLAStrg} = $LayoutObject->BuildSelection(
-                Data         => \%SLA,
-                Name         => 'SLAID',
-                SelectedID   => $Param{SLAID},
-                Class        => 'Modernize',
-                PossibleNone => 1,
-                Sort         => 'AlphanumericValue',
-                Translation  => 0,
-                Max          => 200,
-            );
-
-            $LayoutObject->Block(
-                Name => 'SLA',
-                Data => {%Param},
-            );
-        }
+        $LayoutObject->Block(
+            Name => 'SLA',
+            Data => {
+                SLAMandatory => $Config->{SLAMandatory},
+                %Param,
+            },
+        );
     }
 
     if ( $Config->{Queue} ) {
@@ -1602,10 +1602,12 @@ sub _Mask {
 
         # set move queues
         $Param{QueuesStrg} = $LayoutObject->AgentQueueListOption(
-            Data           => { %MoveQueues, '' => '-' },
-            Multiple       => 0,
-            Size           => 0,
-            Class          => 'NewQueueID Modernize',
+            Data     => { %MoveQueues, '' => '-' },
+            Multiple => 0,
+            Size     => 0,
+            Class    => 'NewQueueID Modernize '
+                . ( $Config->{QueueMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{NewQueueInvalid} || '' ),
             Name           => 'NewQueueID',
             SelectedID     => $Param{NewQueueID},
             TreeView       => $TreeView,
@@ -1615,7 +1617,10 @@ sub _Mask {
 
         $LayoutObject->Block(
             Name => 'Queue',
-            Data => {%Param},
+            Data => {
+                QueueMandatory => $Config->{QueueMandatory} || 0,
+                %Param
+            },
         );
     }
 
@@ -1648,6 +1653,7 @@ sub _Mask {
 
         my $ACL = $TicketObject->TicketAcl(
             %Ticket,
+            Action        => $Self->{Action},
             ReturnType    => 'Ticket',
             ReturnSubType => 'NewOwner',
             Data          => \%ShownUsers,
@@ -1692,6 +1698,7 @@ sub _Mask {
 
         my $OldOwnerACL = $TicketObject->TicketAcl(
             %Ticket,
+            Action        => $Self->{Action},
             ReturnType    => 'Ticket',
             ReturnSubType => 'OldOwner',
             Data          => \%OldOwnersShown,
@@ -1721,8 +1728,11 @@ sub _Mask {
         );
 
         $LayoutObject->Block(
-            Name => $Config->{OwnerMandatory} ? 'OwnerMandatory' : 'Owner',
-            Data => \%Param,
+            Name => 'Owner',
+            Data => {
+                OwnerMandatory => $Config->{OwnerMandatory} || 0,
+                %Param,
+                }
         );
     }
 
@@ -1750,6 +1760,7 @@ sub _Mask {
 
         my $ACL = $TicketObject->TicketAcl(
             %Ticket,
+            Action        => $Self->{Action},
             ReturnType    => 'Ticket',
             ReturnSubType => 'Responsible',
             Data          => \%ShownUsers,
@@ -1762,17 +1773,23 @@ sub _Mask {
 
         # get responsible
         $Param{ResponsibleStrg} = $LayoutObject->BuildSelection(
-            Data         => \%ShownUsers,
-            SelectedID   => $Param{NewResponsibleID},
-            Name         => 'NewResponsibleID',
-            Class        => 'Modernize',
+            Data       => \%ShownUsers,
+            SelectedID => $Param{NewResponsibleID},
+            Name       => 'NewResponsibleID',
+            Class      => 'Modernize '
+                . ( $Config->{ResponsibleMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{NewResponsibleInvalid} || '' ),
             PossibleNone => 1,
             Size         => 1,
         );
         $LayoutObject->Block(
             Name => 'Responsible',
-            Data => \%Param,
+            Data => {
+                ResponsibleMandatory => $Config->{ResponsibleMandatory} || 0,
+                %Param,
+                }
         );
+
     }
 
     if ( $Config->{State} ) {
@@ -1794,51 +1811,55 @@ sub _Mask {
 
         # build next states string
         $Param{StateStrg} = $LayoutObject->BuildSelection(
-            Data         => \%StateList,
-            Name         => 'NewStateID',
-            Class        => 'Modernize',
+            Data  => \%StateList,
+            Name  => 'NewStateID',
+            Class => 'Modernize '
+                . ( $Config->{StateMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{NewStateInvalid} || '' ),
             PossibleNone => $Config->{StateDefault} ? 0 : 1,
             %State,
         );
         $LayoutObject->Block(
             Name => 'State',
-            Data => \%Param,
+            Data => {
+                StateMandatory => $Config->{StateMandatory} || 0,
+                %Param,
+                }
         );
 
-        STATEID:
-        for my $StateID ( sort keys %StateList ) {
+        if ( IsArrayRefWithData( $Config->{StateType} ) ) {
 
-            next STATEID if !$StateID;
+            STATETYPE:
+            for my $StateType ( @{ $Config->{StateType} } ) {
 
-            # get state data
-            my %StateData = $Kernel::OM->Get('Kernel::System::State')->StateGet( ID => $StateID );
+                next STATETYPE if !$StateType;
+                next STATETYPE if $StateType !~ /pending/i;
 
-            next STATEID if $StateData{TypeName} !~ /pending/i;
+                # get used calendar
+                my $Calendar = $TicketObject->TicketCalendarGet(
+                    %Ticket,
+                );
 
-            # get used calendar
-            my $Calendar = $TicketObject->TicketCalendarGet(
-                %Ticket,
-            );
+                $Param{DateString} = $LayoutObject->BuildDateSelection(
+                    %Param,
+                    Format           => 'DateInputFormatLong',
+                    YearPeriodPast   => 0,
+                    YearPeriodFuture => 5,
+                    DiffTime         => $ConfigObject->Get('Ticket::Frontend::PendingDiffTime')
+                        || 0,
+                    Class => $Param{DateInvalid} || ' ',
+                    Validate             => 1,
+                    ValidateDateInFuture => 1,
+                    Calendar             => $Calendar,
+                );
 
-            $Param{DateString} = $LayoutObject->BuildDateSelection(
-                %Param,
-                Format           => 'DateInputFormatLong',
-                YearPeriodPast   => 0,
-                YearPeriodFuture => 5,
-                DiffTime         => $ConfigObject->Get('Ticket::Frontend::PendingDiffTime')
-                    || 0,
-                Class => $Param{DateInvalid} || ' ',
-                Validate             => 1,
-                ValidateDateInFuture => 1,
-                Calendar             => $Calendar,
-            );
+                $LayoutObject->Block(
+                    Name => 'StatePending',
+                    Data => \%Param,
+                );
 
-            $LayoutObject->Block(
-                Name => 'StatePending',
-                Data => \%Param,
-            );
-
-            last STATEID;
+                last STATETYPE;
+            }
         }
     }
 
@@ -2180,8 +2201,8 @@ sub _Mask {
             $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
             $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-            $LayoutObject->Block(
-                Name => 'RichText',
+            # set up rich text editor
+            $LayoutObject->SetRichTextParameters(
                 Data => \%Param,
             );
         }
@@ -2381,6 +2402,7 @@ sub _GetResponsible {
     # workflow
     my $ACL = $TicketObject->TicketAcl(
         %Param,
+        Action        => $Self->{Action},
         ReturnType    => 'Ticket',
         ReturnSubType => 'Responsible',
         Data          => \%ShownUsers,
@@ -2425,6 +2447,7 @@ sub _GetOwners {
     # workflow
     my $ACL = $TicketObject->TicketAcl(
         %Param,
+        Action        => $Self->{Action},
         ReturnType    => 'Ticket',
         ReturnSubType => 'NewOwner',
         Data          => \%ShownUsers,
@@ -2459,6 +2482,7 @@ sub _GetOldOwners {
     # workflow
     my $ACL = $TicketObject->TicketAcl(
         %Param,
+        Action        => $Self->{Action},
         ReturnType    => 'Ticket',
         ReturnSubType => 'OldOwner',
         Data          => \%UserHash,

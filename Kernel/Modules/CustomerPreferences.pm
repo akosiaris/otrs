@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,8 @@ use strict;
 use warnings;
 
 our $ObjectManagerDisabled = 1;
+
+use Kernel::Language qw(Translatable);
 
 sub new {
     my ( $Type, %Param ) = @_;
@@ -41,13 +43,17 @@ sub Run {
         # check group param
         my $Group = $ParamObject->GetParam( Param => 'Group' ) || '';
         if ( !$Group ) {
-            return $LayoutObject->ErrorScreen( Message => 'Param Group is required!' );
+            return $LayoutObject->ErrorScreen(
+                Message => Translatable('Param Group is required!'),
+            );
         }
 
         # check preferences setting
         my %Preferences = %{ $Kernel::OM->Get('Kernel::Config')->Get('CustomerPreferencesGroups') };
         if ( !$Preferences{$Group} ) {
-            return $LayoutObject->ErrorScreen( Message => "No such config for $Group" );
+            return $LayoutObject->ErrorScreen(
+                Message => $LayoutObject->{LanguageObject}->Translate( 'No such config for %s', $Group ),
+            );
         }
 
         # get user data

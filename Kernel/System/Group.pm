@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -24,22 +24,16 @@ our @ObjectDependencies = (
 
 Kernel::System::Group - group and roles lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All group and roles functions. E. g. to add groups or to get a member list of a group.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $GroupObject = $Kernel::OM->Get('Kernel::System::Group');
 
 =cut
@@ -54,7 +48,7 @@ sub new {
     return $Self;
 }
 
-=item GroupLookup()
+=head2 GroupLookup()
 
 get id or name for group
 
@@ -93,7 +87,7 @@ sub GroupLookup {
     return $GroupListReverse{ $Param{Group} };
 }
 
-=item GroupAdd()
+=head2 GroupAdd()
 
 to add a group
 
@@ -110,14 +104,23 @@ sub GroupAdd {
     my ( $Self, %Param ) = @_;
 
     # check needed stuff
-    for (qw(Name ValidID UserID)) {
-        if ( !$Param{$_} ) {
+    for my $Needed (qw(Name ValidID UserID)) {
+        if ( !$Param{$Needed} ) {
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'error',
-                Message  => "Need $_!",
+                Message  => "Need $Needed!",
             );
             return;
         }
+    }
+
+    my %ExistingGroups = reverse $Self->GroupList( Valid => 0 );
+    if ( defined $ExistingGroups{ $Param{Name} } ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "A Group with the name $Param{Name} already exists.",
+        );
+        return;
     }
 
     # get database object
@@ -167,7 +170,7 @@ sub GroupAdd {
     return $GroupID;
 }
 
-=item GroupGet()
+=head2 GroupGet()
 
 returns a hash with group data
 
@@ -214,7 +217,7 @@ sub GroupGet {
     return %Group;
 }
 
-=item GroupUpdate()
+=head2 GroupUpdate()
 
 update of a group
 
@@ -232,14 +235,23 @@ sub GroupUpdate {
     my ( $Self, %Param ) = @_;
 
     # check needed stuff
-    for (qw(ID Name ValidID UserID)) {
-        if ( !$Param{$_} ) {
+    for my $Needed (qw(ID Name ValidID UserID)) {
+        if ( !$Param{$Needed} ) {
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'error',
-                Message  => "Need $_!",
+                Message  => "Need $Needed!",
             );
             return;
         }
+    }
+
+    my %ExistingGroups = reverse $Self->GroupList( Valid => 0 );
+    if ( defined $ExistingGroups{ $Param{Name} } && $ExistingGroups{ $Param{Name} } != $Param{ID} ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "A Group with the name $Param{Name} already exists.",
+        );
+        return;
     }
 
     # set default value
@@ -308,7 +320,7 @@ sub GroupUpdate {
     return 1;
 }
 
-=item GroupList()
+=head2 GroupList()
 
 returns a hash of all groups
 
@@ -397,7 +409,7 @@ sub GroupList {
     return %GroupListAll;
 }
 
-=item GroupDataList()
+=head2 GroupDataList()
 
 returns a hash of all group data
 
@@ -478,7 +490,7 @@ sub GroupDataList {
     return %GroupDataList;
 }
 
-=item RoleLookup()
+=head2 RoleLookup()
 
 get id or name for role
 
@@ -517,7 +529,7 @@ sub RoleLookup {
     return $RoleListReverse{ $Param{Role} };
 }
 
-=item RoleGet()
+=head2 RoleGet()
 
 returns a hash with role data
 
@@ -564,7 +576,7 @@ sub RoleGet {
     return %Role;
 }
 
-=item RoleAdd()
+=head2 RoleAdd()
 
 to add a new role
 
@@ -581,14 +593,23 @@ sub RoleAdd {
     my ( $Self, %Param ) = @_;
 
     # check needed stuff
-    for (qw(Name ValidID UserID)) {
-        if ( !$Param{$_} ) {
+    for my $Needed (qw(Name ValidID UserID)) {
+        if ( !$Param{$Needed} ) {
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'error',
-                Message  => "Need $_!"
+                Message  => "Need $Needed!"
             );
             return;
         }
+    }
+
+    my %ExistingRoles = reverse $Self->RoleList( Valid => 0 );
+    if ( defined $ExistingRoles{ $Param{Name} } ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "A Role with the name $Param{Name} already exists.",
+        );
+        return;
     }
 
     # get database object
@@ -636,7 +657,7 @@ sub RoleAdd {
     return $RoleID;
 }
 
-=item RoleUpdate()
+=head2 RoleUpdate()
 
 update of a role
 
@@ -662,6 +683,15 @@ sub RoleUpdate {
             );
             return;
         }
+    }
+
+    my %ExistingRoles = reverse $Self->RoleList( Valid => 0 );
+    if ( defined $ExistingRoles{ $Param{Name} } && $ExistingRoles{ $Param{Name} } != $Param{ID} ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "A Role with the name $Param{Name} already exists.",
+        );
+        return;
     }
 
     # set default value
@@ -724,7 +754,7 @@ sub RoleUpdate {
     return 1;
 }
 
-=item RoleList()
+=head2 RoleList()
 
 returns a hash of all roles
 
@@ -813,7 +843,7 @@ sub RoleList {
     return %RoleListAll;
 }
 
-=item RoleDataList()
+=head2 RoleDataList()
 
 returns a hash of all role data
 
@@ -894,7 +924,7 @@ sub RoleDataList {
     return %RoleDataList;
 }
 
-=item PermissionUserInvolvedGet()
+=head2 PermissionUserInvolvedGet()
 
 returns a list of users with the given permissions
 
@@ -940,7 +970,7 @@ sub PermissionUserInvolvedGet {
     return %Users;
 }
 
-=item PermissionUserGet()
+=head2 PermissionUserGet()
 
 Get groups of the given user.
 
@@ -988,20 +1018,20 @@ sub PermissionUserGet {
         UserID => $Param{UserID},
     );
 
-    return %GroupList if !%RoleList;
+    if (%RoleList) {
+        ROLEID:
+        for my $RoleID ( sort keys %RoleList ) {
 
-    ROLEID:
-    for my $RoleID ( sort keys %RoleList ) {
+            next ROLEID if !$RoleID;
 
-        next ROLEID if !$RoleID;
+            # get groups of the role
+            my %RoleGroupList = $Self->PermissionRoleGroupGet(
+                RoleID => $RoleID,
+                Type   => $Param{Type},
+            );
 
-        # get groups of the role
-        my %RoleGroupList = $Self->PermissionRoleGroupGet(
-            RoleID => $RoleID,
-            Type   => $Param{Type},
-        );
-
-        %GroupList = ( %GroupList, %RoleGroupList );
+            %GroupList = ( %GroupList, %RoleGroupList );
+        }
     }
 
     # set cache
@@ -1015,7 +1045,7 @@ sub PermissionUserGet {
     return %GroupList;
 }
 
-=item PermissionGroupGet()
+=head2 PermissionGroupGet()
 
 Get users of the given group.
 
@@ -1090,7 +1120,7 @@ sub PermissionGroupGet {
     return %UserList;
 }
 
-=item PermissionGroupUserAdd()
+=head2 PermissionGroupUserAdd()
 
 add new permissions or update existing one to the given group of a given user
 
@@ -1226,7 +1256,7 @@ sub PermissionGroupUserAdd {
     return 1;
 }
 
-=item PermissionGroupUserGet()
+=head2 PermissionGroupUserGet()
 
 returns a list with all users of a group
 
@@ -1309,7 +1339,7 @@ sub PermissionGroupUserGet {
     return %Users;
 }
 
-=item PermissionUserGroupGet()
+=head2 PermissionUserGroupGet()
 
 returns a list of groups a user is member of
 
@@ -1347,12 +1377,11 @@ sub PermissionUserGroupGet {
 
     return if !%PermissionTypeList;
 
-    # get valid user list
-    my %UserList = $Kernel::OM->Get('Kernel::System::User')->UserList(
-        Type => 'Short',
+    # check if user is valid
+    return if !$Kernel::OM->Get('Kernel::System::User')->GetUserData(
+        UserID => $Param{UserID},
+        Valid  => 1,
     );
-
-    return if !$UserList{ $Param{UserID} };
 
     # get group user data
     my %Permissions = $Self->_DBGroupUserGet(
@@ -1392,7 +1421,7 @@ sub PermissionUserGroupGet {
     return %Groups;
 }
 
-=item PermissionGroupRoleAdd()
+=head2 PermissionGroupRoleAdd()
 
 add new permissions or update existing one to the given group of a given role
 
@@ -1528,7 +1557,7 @@ sub PermissionGroupRoleAdd {
     return 1;
 }
 
-=item PermissionGroupRoleGet()
+=head2 PermissionGroupRoleGet()
 
 returns a list with all roles of a group
 
@@ -1609,7 +1638,7 @@ sub PermissionGroupRoleGet {
     return %Roles;
 }
 
-=item PermissionRoleGroupGet()
+=head2 PermissionRoleGroupGet()
 
 returns a list with all groups of a role
 
@@ -1690,7 +1719,7 @@ sub PermissionRoleGroupGet {
     return %Groups;
 }
 
-=item PermissionRoleUserAdd()
+=head2 PermissionRoleUserAdd()
 
 add new permissions or update existing one to the given group of a given role
 
@@ -1761,7 +1790,7 @@ sub PermissionRoleUserAdd {
     return 1;
 }
 
-=item PermissionRoleUserGet()
+=head2 PermissionRoleUserGet()
 
 returns a list with all users of a role
 
@@ -1824,7 +1853,7 @@ sub PermissionRoleUserGet {
     return %Users;
 }
 
-=item PermissionUserRoleGet()
+=head2 PermissionUserRoleGet()
 
 returns a list with all roles of a user
 
@@ -1887,7 +1916,7 @@ sub PermissionUserRoleGet {
     return %Roles;
 }
 
-=item GroupMemberAdd()
+=head2 GroupMemberAdd()
 
 Function for backward compatibility. Redirected to PermissionGroupUserAdd().
 
@@ -1899,7 +1928,7 @@ sub GroupMemberAdd {
     return $Self->PermissionGroupUserAdd(%Param);
 }
 
-=item GroupMemberList()
+=head2 GroupMemberList()
 
 Function for backward compatibility. Redirected to PermissionUserGet() and PermissionGroupGet().
 
@@ -1978,7 +2007,7 @@ sub GroupMemberList {
     return;
 }
 
-=item GroupMemberInvolvedList()
+=head2 GroupMemberInvolvedList()
 
 Function for backward compatibility. Redirected to PermissionUserInvolvedGet().
 
@@ -1990,7 +2019,7 @@ sub GroupMemberInvolvedList {
     return $Self->PermissionUserInvolvedGet(%Param);
 }
 
-=item GroupGroupMemberList()
+=head2 GroupGroupMemberList()
 
 Function for backward compatibility. Redirected to PermissionUserGroupGet() and PermissionGroupUserGet().
 
@@ -2096,7 +2125,7 @@ sub GroupGroupMemberList {
     return;
 }
 
-=item GroupRoleMemberList()
+=head2 GroupRoleMemberList()
 
 Function for backward compatibility. Redirected to PermissionRoleGroupGet() and PermissionGroupRoleGet().
 
@@ -2202,7 +2231,7 @@ sub GroupRoleMemberList {
     return;
 }
 
-=item GroupRoleMemberAdd()
+=head2 GroupRoleMemberAdd()
 
 Function for backward compatibility. Redirected to PermissionGroupRoleAdd().
 
@@ -2214,7 +2243,7 @@ sub GroupRoleMemberAdd {
     return $Self->PermissionGroupRoleAdd(%Param);
 }
 
-=item GroupUserRoleMemberList()
+=head2 GroupUserRoleMemberList()
 
 Function for backward compatibility. Redirected to PermissionUserRoleGet() and PermissionRoleUserGet().
 
@@ -2317,7 +2346,7 @@ sub GroupUserRoleMemberList {
     return;
 }
 
-=item GroupUserRoleMemberAdd()
+=head2 GroupUserRoleMemberAdd()
 
 Function for backward compatibility. Redirected to PermissionRoleUserAdd().
 
@@ -2333,7 +2362,7 @@ sub GroupUserRoleMemberAdd {
 
 =cut
 
-=item _DBGroupUserGet()
+=head2 _DBGroupUserGet()
 
 returns the content of the database table group_user
 
@@ -2446,8 +2475,10 @@ sub _DBGroupUserGet {
     my $DBObject = $Kernel::OM->Get('Kernel::System::DB');
 
     # get all data from table group_user
+    # We need to check for permission_value=1 because in previous OTRS 4 and below there could be records created
+    #   with 0 (see bug#11616).
     $DBObject->Prepare(
-        SQL => 'SELECT user_id, group_id, permission_key FROM group_user',
+        SQL => 'SELECT user_id, group_id, permission_key FROM group_user WHERE permission_value = 1',
     );
 
     # fetch the result
@@ -2490,7 +2521,7 @@ sub _DBGroupUserGet {
     return %GroupPermUserList;
 }
 
-=item _DBGroupRoleGet()
+=head2 _DBGroupRoleGet()
 
 returns the content of the database table group_role
 
@@ -2603,8 +2634,10 @@ sub _DBGroupRoleGet {
     my $DBObject = $Kernel::OM->Get('Kernel::System::DB');
 
     # get all data from table group_role
+    # We need to check for permission_value=1 because in previous OTRS 4 and below there could be records created
+    #   with 0 (see bug#11616).
     $DBObject->Prepare(
-        SQL => 'SELECT role_id, group_id, permission_key FROM group_role',
+        SQL => 'SELECT role_id, group_id, permission_key FROM group_role WHERE permission_value = 1',
     );
 
     # fetch the result
@@ -2647,7 +2680,7 @@ sub _DBGroupRoleGet {
     return %GroupPermRoleList;
 }
 
-=item _DBRoleUserGet()
+=head2 _DBRoleUserGet()
 
 returns the content of the database table role_user
 
@@ -2793,7 +2826,7 @@ sub _DBRoleUserGet {
     return %UserRoleHash;
 }
 
-=item _PermissionTypeList()
+=head2 _PermissionTypeList()
 
 returns a list of valid system permissions.
 
@@ -2830,8 +2863,6 @@ sub _PermissionTypeList {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

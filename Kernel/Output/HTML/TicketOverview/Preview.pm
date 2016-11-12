@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our @ObjectDependencies = (
     'Kernel::Config',
@@ -79,7 +80,7 @@ sub ActionRow {
             Name => 'DocumentActionRowBulk',
             Data => {
                 %Param,
-                Name => 'Bulk',
+                Name => Translatable('Bulk'),
             },
         );
     }
@@ -158,12 +159,6 @@ sub ActionRow {
             }
         }
     }
-
-    # init for table control
-    $LayoutObject->Block(
-        Name => 'DocumentReadyStart',
-        Data => \%Param,
-    );
 
     my $Output = $LayoutObject->Output(
         TemplateFile => 'AgentTicketOverviewPreview',
@@ -266,6 +261,16 @@ sub Run {
                 }
             }
         }
+
+        # send data to JS
+        $LayoutObject->AddJSData(
+            Key   => 'ReplyFieldsFormID',
+            Value => $Self->{ReplyFieldsFormID},
+        );
+        $LayoutObject->AddJSData(
+            Key   => 'ActionRowTickets',
+            Value => $Self->{ActionRowTickets},
+        );
     }
     else {
         $LayoutObject->Block( Name => 'NoTicketFound' );
@@ -314,7 +319,7 @@ sub _Show {
     # check if bulk feature is enabled
     if ( $Param{Bulk} ) {
         $LayoutObject->Block(
-            Name => 'Bulk',
+            Name => Translatable('Bulk'),
             Data => \%Param,
         );
     }
@@ -503,7 +508,7 @@ sub _Show {
             push @ActionItems, {
                 HTML        => $Output,
                 ID          => $Item->{ID},
-                Name        => $LayoutObject->{LanguageObject}->Translate( $Item->{Name} ),
+                Name        => $Item->{Name},
                 Link        => $LayoutObject->{Baselink} . $Item->{Link},
                 Target      => $Item->{Target},
                 PopupType   => $Item->{PopupType},
@@ -578,7 +583,7 @@ sub _Show {
     # check if bulk feature is enabled
     if ( $Param{Bulk} ) {
         $LayoutObject->Block(
-            Name => 'Bulk',
+            Name => Translatable('Bulk'),
             Data => \%Param,
         );
     }
@@ -1011,7 +1016,47 @@ sub _Show {
 
         # otherwise display the last article in the list as expanded (default)
         else {
-            $ArticleBody[0]->{Class} = 'Active';
+            # find latest not seen article
+            my $ArticleSelected;
+            my $IgnoreSystemSender = $ConfigObject->Get('Ticket::NewArticleIgnoreSystemSender');
+
+            ARTICLE:
+            for my $ArticleItem (@ArticleBody) {
+
+                my %ArticleFlags = $TicketObject->ArticleFlagGet(
+                    ArticleID => $ArticleItem->{ArticleID},
+                    UserID    => $Self->{UserID},
+                );
+
+                # ignore system sender type
+                next ARTICLE
+                    if $IgnoreSystemSender
+                    && $ArticleItem->{SenderType} eq 'system';
+
+                # ignore already seen articles
+                next ARTICLE if $ArticleFlags{Seen};
+
+                $ArticleItem->{Class} = 'Active';
+                $ArticleSelected = 1;
+                last ARTICLE;
+            }
+
+            # set selected article
+            if ( !$ArticleSelected ) {
+
+                # set last customer article as selected article
+                ARTICLETMP:
+                for my $ArticleTmp (@ArticleBody) {
+                    if ( $ArticleTmp->{SenderType} eq 'customer' ) {
+                        $ArticleTmp->{Class} = 'Active';
+                        $ArticleSelected = 1;
+                        last ARTICLETMP;
+                    }
+                }
+                if ( !$ArticleSelected ) {
+                    $ArticleBody[0]->{Class} = 'Active';
+                }
+            }
         }
 
         $LayoutObject->Block(
@@ -1097,6 +1142,7 @@ sub _Show {
                         }
                     }
                 }
+
                 if ($Access) {
                     $LayoutObject->Block(
                         Name => 'ArticlePreviewActionRow',
@@ -1152,12 +1198,14 @@ sub _Show {
                         Data => {
                             %{$ArticleItem},
                             StandardResponsesStrg => $StandardResponsesStrg,
-                            Name                  => 'Reply',
+                            Name                  => Translatable('Reply'),
                             Class                 => 'AsPopup',
                             Action                => 'AgentTicketCompose',
                             FormID                => 'Reply' . $ArticleItem->{ArticleID},
                         },
                     );
+
+                    push @{ $Self->{ReplyFieldsFormID} }, 'Reply' . $ArticleItem->{ArticleID};
 
                     # check if reply all is needed
                     my $Recipients = '';
@@ -1213,13 +1261,15 @@ sub _Show {
                             Data => {
                                 %{$ArticleItem},
                                 StandardResponsesStrg => $StandardResponsesStrg,
-                                Name                  => 'Reply All',
+                                Name                  => Translatable('Reply All'),
                                 Class                 => 'AsPopup',
                                 Action                => 'AgentTicketCompose',
                                 FormID                => 'ReplyAll' . $ArticleItem->{ArticleID},
                                 ReplyAll              => 1,
                             },
                         );
+
+                        push @{ $Self->{ReplyFieldsFormID} }, 'ReplyAll' . $ArticleItem->{ArticleID};
                     }
                 }
             }
@@ -1229,13 +1279,17 @@ sub _Show {
     # add action items as js
     if ( @ActionItems && !$Param{Config}->{TicketActionsPerTicket} ) {
 
-        $LayoutObject->Block(
-            Name => 'DocumentReadyActionRowAdd',
-            Data => {
-                TicketID => $Param{TicketID},
-                Data     => \@ActionItems,
-            },
-        );
+        # replace TT directives from string with values
+        for my $ActionItem (@ActionItems) {
+            $ActionItem->{Link} = $LayoutObject->Output(
+                Template => $ActionItem->{Link},
+                Data     => {
+                    TicketID => $Article{TicketID},
+                },
+            );
+        }
+
+        $Self->{ActionRowTickets}->{ $Param{TicketID} } = $LayoutObject->JSONEncode( Data => \@ActionItems );
     }
 
     # create & return output

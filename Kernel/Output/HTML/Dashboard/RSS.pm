@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -79,18 +79,22 @@ sub Run {
     }
 
     # get content
-    my $Feed = eval {
-        XML::FeedPP->new(
-            $FeedURL,
-            'xml_deref' => 1,
-            'utf8_flag' => 1,
-        );
-    };
+    my $Feed;
+
+    TRY:
+    for ( 1 .. 3 ) {
+        $Feed = eval {
+            XML::FeedPP->new(
+                $FeedURL,
+                'xml_deref' => 1,
+                'utf8_flag' => 1,
+            );
+        };
+        last TRY if $Feed;
+    }
 
     if ( !$Feed ) {
-        my $Content = "Can't connect to $FeedURL";
-
-        return $Content;
+        return $LayoutObject->{LanguageObject}->Translate( 'Can\'t connect to %s!', $FeedURL );
     }
 
     # get time object

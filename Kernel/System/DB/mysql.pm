@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -55,12 +55,14 @@ sub LoadPreferences {
     $Self->{'DB::Version'}
         = "SELECT CONCAT( IF (INSTR( VERSION(),'MariaDB'),'MariaDB ','MySQL '), SUBSTRING_INDEX(VERSION(),'-',1))";
 
-    # DBI/DBD::mysql attributes
-    # disable automatic reconnects as they do not execute DB::Connect, which will
-    # cause charset problems
-    $Self->{'DB::Attribute'} = {
+    $Self->{'DB::ListTables'} = 'SHOW TABLES',
+
+        # DBI/DBD::mysql attributes
+        # disable automatic reconnects as they do not execute DB::Connect, which will
+        # cause charset problems
+        $Self->{'DB::Attribute'} = {
         mysql_auto_reconnect => 0,
-    };
+        };
 
     # set current time stamp if different to "current_timestamp"
     $Self->{'DB::CurrentTimestamp'} = '';
@@ -622,7 +624,7 @@ sub ForeignKeyCreate {
         );
         $ForeignKey = substr $ForeignKey, 0, 58;
         $ForeignKey .= substr $MD5, 0,  1;
-        $ForeignKey .= substr $MD5, 61, 1;
+        $ForeignKey .= substr $MD5, 31, 1;
     }
 
     # add foreign key
@@ -654,7 +656,7 @@ sub ForeignKeyDrop {
         );
         $ForeignKey = substr $ForeignKey, 0, 58;
         $ForeignKey .= substr $MD5, 0,  1;
-        $ForeignKey .= substr $MD5, 61, 1;
+        $ForeignKey .= substr $MD5, 31, 1;
     }
 
     # drop foreign key

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -51,6 +51,7 @@ sub Run {
     my $NotificationEventObject = $Kernel::OM->Get('Kernel::System::NotificationEvent');
     my $BackendObject           = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
     my $MainObject              = $Kernel::OM->Get('Kernel::System::Main');
+    my $Notification            = $ParamObject->GetParam( Param => 'Notification' );
 
     # get registered transport layers
     my %RegisteredTransports = %{ $Kernel::OM->Get('Kernel::Config')->Get('Notification::Transport') || {} };
@@ -70,6 +71,8 @@ sub Run {
 
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
+        $Output .= $LayoutObject->Notify( Info => Translatable('Notification updated!') )
+            if ( $Notification && $Notification eq 'Update' );
         $Self->_Edit(
             %Data,
             Action             => 'Change',
@@ -145,7 +148,7 @@ sub Run {
         for my $DynamicFieldConfig ( @{$DynamicField} ) {
             next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-            # extract the dynamic field value form the web request
+            # extract the dynamic field value from the web request
             my $DynamicFieldValue = $BackendObject->SearchFieldValueGet(
                 DynamicFieldConfig     => $DynamicFieldConfig,
                 ParamObject            => $ParamObject,
@@ -223,17 +226,19 @@ sub Run {
         }
 
         if ($Ok) {
-            $Self->_Overview();
-            my $Output = $LayoutObject->Header();
-            $Output .= $LayoutObject->NavigationBar();
-            $Output .= $LayoutObject->Notify( Info => 'Updated!' );
-            $Output .= $LayoutObject->Output(
-                TemplateFile => 'AdminNotificationEvent',
-                Data         => \%Param,
-            );
-            $Output .= $LayoutObject->Footer();
 
-            return $Output;
+            # if the user would like to continue editing the notification event, just redirect to the edit screen
+            if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+                my $ID = $ParamObject->GetParam( Param => 'ID' ) || '';
+                return $LayoutObject->Redirect(
+                    OP => "Action=$Self->{Action};Subaction=Change;ID=$ID;Notification=Update"
+                );
+            }
+            else {
+
+                # otherwise return to overview
+                return $LayoutObject->Redirect( OP => "Action=$Self->{Action};Notification=Update" );
+            }
         }
         else {
             for my $Needed (qw(Name Events Transports)) {
@@ -354,7 +359,7 @@ sub Run {
         for my $DynamicFieldConfig ( @{$DynamicField} ) {
             next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-            # extract the dynamic field value form the web request
+            # extract the dynamic field value from the web request
             my $DynamicFieldValue = $BackendObject->SearchFieldValueGet(
                 DynamicFieldConfig     => $DynamicFieldConfig,
                 ParamObject            => $ParamObject,
@@ -438,7 +443,7 @@ sub Run {
             $Self->_Overview();
             my $Output = $LayoutObject->Header();
             $Output .= $LayoutObject->NavigationBar();
-            $Output .= $LayoutObject->Notify( Info => 'Added!' );
+            $Output .= $LayoutObject->Notify( Info => Translatable('Notification added!') );
             $Output .= $LayoutObject->Output(
                 TemplateFile => 'AdminNotificationEvent',
                 Data         => \%Param,
@@ -530,7 +535,8 @@ sub Run {
 
             if ( !IsHashRefWithData( \%NotificationSingleData ) ) {
                 return $LayoutObject->ErrorScreen(
-                    Message => "There was an error getting data for Notification with ID " . $NotificationID,
+                    Message => $LayoutObject->{LanguageObject}
+                        ->Translate( 'There was an error getting data for Notification with ID:%s!', $NotificationID ),
                 );
             }
 
@@ -584,7 +590,7 @@ sub Run {
         );
         if ( !IsHashRefWithData( \%NotificationData ) ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Unknown Notification $NotificationID!",
+                Message => $LayoutObject->{LanguageObject}->Translate( 'Unknown Notification %s!', $NotificationID ),
             );
         }
 
@@ -605,7 +611,7 @@ sub Run {
         # show error if can't create
         if ( !$NewNotificationID ) {
             return $LayoutObject->ErrorScreen(
-                Message => "There was an error creating the Notification",
+                Message => Translatable("There was an error creating the Notification"),
             );
         }
 
@@ -637,8 +643,9 @@ sub Run {
 
         if ( !$NotificationImport->{Success} ) {
             my $Message = $NotificationImport->{Message}
-                || 'Notifications could not be Imported due to a unknown error,'
-                . ' please check OTRS logs for more information';
+                || Translatable(
+                'Notifications could not be Imported due to a unknown error, please check OTRS logs for more information'
+                );
             return $LayoutObject->ErrorScreen(
                 Message => $Message,
             );
@@ -646,22 +653,27 @@ sub Run {
 
         if ( $NotificationImport->{AddedNotifications} ) {
             push @{ $Param{NotifyData} }, {
-                Info => 'The following Notifications have been added successfully: '
-                    . $NotificationImport->{AddedNotifications},
+                Info => $LayoutObject->{LanguageObject}->Translate(
+                    'The following Notifications have been added successfully: %s',
+                    $NotificationImport->{AddedNotifications}
+                ),
             };
         }
         if ( $NotificationImport->{UpdatedNotifications} ) {
             push @{ $Param{NotifyData} }, {
-                Info => 'The following Notifications have been updated successfully: '
-                    . $NotificationImport->{UpdatedNotifications},
+                Info => $LayoutObject->{LanguageObject}->Translate(
+                    'The following Notifications have been updated successfully: %s',
+                    $NotificationImport->{UpdatedNotifications}
+                ),
             };
         }
         if ( $NotificationImport->{NotificationErrors} ) {
             push @{ $Param{NotifyData} }, {
                 Priority => 'Error',
-                Info     => 'There where errors adding/updating the following Notifications: '
-                    . $NotificationImport->{NotificationErrors}
-                    . '. Please check the log file for more information.',
+                Info     => $LayoutObject->{LanguageObject}->Translate(
+                    'There where errors adding/updating the following Notifications: %s. Please check the log file for more information.',
+                    $NotificationImport->{NotificationErrors}
+                ),
             };
         }
 
@@ -692,6 +704,8 @@ sub Run {
         $Self->_Overview();
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
+        $Output .= $LayoutObject->Notify( Info => Translatable('Notification updated!') )
+            if ( $Notification && $Notification eq 'Update' );
         $Output .= $LayoutObject->Output(
             TemplateFile => 'AdminNotificationEvent',
             Data         => \%Param,
@@ -801,6 +815,14 @@ sub _Edit {
         push @Events, @{ $RegisteredEvents{$ObjectType} || [] };
     }
 
+    # Suppress these events because of danger of endless loops.
+    my %EventBlacklist = (
+        ArticleAgentNotification    => 1,
+        ArticleCustomerNotification => 1,
+    );
+
+    @Events = grep { !$EventBlacklist{$_} } @Events;
+
     # Build the list...
     $Param{EventsStrg} = $LayoutObject->BuildSelection(
         Data       => \@Events,
@@ -879,14 +901,6 @@ sub _Edit {
         Data => \%Param,
     );
 
-    # shows header
-    if ( $Param{Action} eq 'Change' ) {
-        $LayoutObject->Block( Name => 'HeaderEdit' );
-    }
-    else {
-        $LayoutObject->Block( Name => 'HeaderAdd' );
-    }
-
     # build type string
     if ( $ConfigObject->Get('Ticket::Type') ) {
         my %Type = $Kernel::OM->Get('Kernel::System::Type')->TypeList(
@@ -914,7 +928,7 @@ sub _Edit {
         # get list type
         my %Service = $Kernel::OM->Get('Kernel::System::Service')->ServiceList(
             Valid        => 1,
-            KeepChildren => 1,
+            KeepChildren => $ConfigObject->Get('Ticket::Service::KeepChildren') // 0,
             UserID       => $Self->{UserID},
         );
         $Param{ServicesStrg} = $LayoutObject->BuildSelection(
@@ -1005,8 +1019,8 @@ sub _Edit {
         $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
         $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-        $LayoutObject->Block(
-            Name => 'RichText',
+        # set up rich text editor
+        $LayoutObject->SetRichTextParameters(
             Data => \%Param,
         );
     }
@@ -1195,13 +1209,21 @@ sub _Edit {
     # set once per day checked value
     $Param{OncePerDayChecked} = ( $Param{Data}->{OncePerDay} ? 'checked="checked"' : '' );
 
-    if ( $Param{VisibleForAgent} ) {
+    $Param{VisibleForAgentStrg} = $LayoutObject->BuildSelection(
+        Data => {
+            0 => Translatable('No'),
+            1 => Translatable('Yes'),
+            2 => Translatable('Yes, but require at least one active notification method'),
+        },
+        Name       => 'VisibleForAgent',
+        Sort       => 'NumericKey',
+        Size       => 1,
+        SelectedID => $Param{VisibleForAgent},
+        Class      => 'Modernize W50pc',
+    );
 
-        # include checked attribute
-        $Param{VisibleForAgentChecked} = 'checked="checked"';
-    }
-    else {
-        # include read-only attribute
+    # include read-only attribute
+    if ( !$Param{VisibleForAgent} ) {
         $Param{VisibleForAgentTooltipReadonly} = 'readonly="readonly"';
     }
 
@@ -1332,6 +1354,7 @@ sub _Overview {
     $LayoutObject->Block( Name => 'ActionList' );
     $LayoutObject->Block( Name => 'ActionAdd' );
     $LayoutObject->Block( Name => 'ActionImport' );
+    $LayoutObject->Block( Name => 'Filter' );
 
     $LayoutObject->Block(
         Name => 'OverviewResult',

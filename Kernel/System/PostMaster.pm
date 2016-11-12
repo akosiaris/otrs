@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -19,6 +19,10 @@ use Kernel::System::PostMaster::Reject;
 
 use Kernel::System::VariableCheck qw(IsHashRefWithData);
 
+our %ObjectManagerFlags = (
+    NonSingleton => 1,
+);
+
 our @ObjectDependencies = (
     'Kernel::Config',
     'Kernel::System::DynamicField',
@@ -33,28 +37,23 @@ our @ObjectDependencies = (
 
 Kernel::System::PostMaster - postmaster lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All postmaster functions. E. g. to process emails.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new(
-        'Kernel::System::PostMaster' => {
+    my $PostMasterObject = $Kernel::OM->Create(
+        'Kernel::System::PostMaster',
+        ObjectParams => {
             Email        => \@ArrayOfEmailContent,
             Trusted      => 1, # 1|0 ignore X-OTRS header if false
         },
     );
-    my $PostMasterObject = $Kernel::OM->Get('Kernel::System::PostMaster');
 
 =cut
 
@@ -115,7 +114,7 @@ sub new {
                 )
             {
 
-                # only add the header if is not alreday in the conifg
+                # only add the header if is not alreday in the config
                 if ( !$HeaderLookup{$Header} ) {
                     push @{ $Self->{'PostmasterX-Header'} }, $Header;
                 }
@@ -126,7 +125,7 @@ sub new {
     return $Self;
 }
 
-=item Run()
+=head2 Run()
 
 to execute the run process
 
@@ -212,9 +211,9 @@ sub Run {
         return (5);
     }
 
-    # ----------------------
+    #
     # ticket section
-    # ----------------------
+    #
 
     # check if follow up (again, with new GetParam)
     ( $Tn, $TicketID ) = $Self->CheckFollowUp( GetParam => $GetParam );
@@ -251,7 +250,7 @@ sub Run {
         );
 
         # create a new ticket
-        if ( $FollowUpPossible =~ /new ticket/i && $State{TypeName} =~ /^close/i ) {
+        if ( $FollowUpPossible =~ /new ticket/i && $State{TypeName} =~ /^(removed|close)/i ) {
 
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'info',
@@ -301,14 +300,14 @@ sub Run {
         }
 
         # reject follow up
-        elsif ( $FollowUpPossible =~ /reject/i && $State{TypeName} =~ /^close/i ) {
+        elsif ( $FollowUpPossible =~ /reject/i && $State{TypeName} =~ /^(removed|close)/i ) {
 
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'info',
                 Message  => "Follow up for [$Tn] but follow up not possible. Follow up rejected."
             );
 
-            # send reject mail && and add article to ticket
+            # send reject mail and add article to ticket
             my $Run = $Self->{RejectObject}->Run(
                 TicketID         => $TicketID,
                 InmailUserID     => $Self->{PostmasterUserID},
@@ -357,7 +356,7 @@ sub Run {
             );
         }
 
-        # get queue if of From: and To:
+        # get queue from From: or To:
         if ( !$Param{QueueID} ) {
             $Param{QueueID} = $Self->{DestQueueObject}->GetQueueID( Params => $GetParam );
         }
@@ -411,6 +410,7 @@ sub Run {
                 TicketID  => $TicketID,
                 GetParam  => $GetParam,
                 JobConfig => $Jobs{$Job},
+                Return    => $Return[0],
             );
 
             if ( !$Run ) {
@@ -426,7 +426,7 @@ sub Run {
     return @Return;
 }
 
-=item CheckFollowUp()
+=head2 CheckFollowUp()
 
 to detect the ticket number in processing email
 
@@ -483,7 +483,7 @@ sub CheckFollowUp {
     return;
 }
 
-=item GetEmailParams()
+=head2 GetEmailParams()
 
 to get all configured PostmasterX-Header email headers
 
@@ -596,8 +596,6 @@ sub GetEmailParams {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

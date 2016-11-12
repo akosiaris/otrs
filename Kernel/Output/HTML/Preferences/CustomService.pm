@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -10,6 +10,8 @@ package Kernel::Output::HTML::Preferences::CustomService;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our @ObjectDependencies = (
     'Kernel::Output::HTML::Layout',
@@ -40,12 +42,15 @@ sub Param {
     my @Params;
     my @CustomServiceIDs;
 
+    # get config object
+    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+
     # check needed param,
     # if no user id is given or Ticket::Service is disabled
     # do not show this box
     if (
         !$Param{UserData}->{UserID}
-        || !$Kernel::OM->Get('Kernel::Config')->Get('Ticket::Service')
+        || !$ConfigObject->Get('Ticket::Service')
         )
     {
         return ();
@@ -53,8 +58,9 @@ sub Param {
 
     # get all services
     my %ServiceList = $Kernel::OM->Get('Kernel::System::Service')->ServiceList(
-        Valid  => 1,
-        UserID => $Self->{UserID},
+        KeepChildren => $ConfigObject->Get('Ticket::Service::KeepChildren') // 0,
+        Valid        => 1,
+        UserID       => $Self->{UserID},
     );
 
     # get param object
@@ -119,7 +125,7 @@ sub Run {
         Key  => $CacheKey,
     );
 
-    $Self->{Message} = 'Preferences updated successfully!';
+    $Self->{Message} = Translatable('Preferences updated successfully!');
     return 1;
 }
 

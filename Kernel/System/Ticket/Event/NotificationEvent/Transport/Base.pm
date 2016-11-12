@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -20,15 +20,9 @@ our @ObjectDependencies = (
 
 Kernel::System::Ticket::Event::NotificationEvent::Transport::Base - common notification event transport functions
 
-=head1 SYNOPSIS
-
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item SendNotification()
+=head2 SendNotification()
 
 send a notification using an specified transport
 
@@ -54,7 +48,7 @@ returns
 
 =cut
 
-=item GetTransportRecipients()
+=head2 GetTransportRecipients()
 
 generates a list of recipients exclusive for a determined transport, the content of the list is
 usually an attribute of an Agent or Customer and it depends on each transport
@@ -78,7 +72,7 @@ or
 
 =cut
 
-=item TransportSettingsDisplayGet()
+=head2 TransportSettingsDisplayGet()
 
 generates and returns the HTML code to display exclusive settings for each transport.
 
@@ -88,11 +82,11 @@ generates and returns the HTML code to display exclusive settings for each trans
 
 returns
 
-    $HTMLOuput = 'some HTML code';
+    $HTMLOutput = 'some HTML code';
 
 =cut
 
-=item TransportParamSettingsGet()
+=head2 TransportParamSettingsGet()
 
 gets specific parameters from the web request and put them back in the GetParam attribute to be
 saved in the notification as the standard parameters
@@ -107,7 +101,7 @@ returns
 
 =cut
 
-=item IsUsable();
+=head2 IsUsable();
 
 returns if the transport can be used in the system environment,
 
@@ -119,7 +113,7 @@ returns
 
 =cut
 
-=item GetTransportEventData()
+=head2 GetTransportEventData()
 
 returns the needed event information after a notification has been sent
 
@@ -145,8 +139,6 @@ sub GetTransportEventData {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

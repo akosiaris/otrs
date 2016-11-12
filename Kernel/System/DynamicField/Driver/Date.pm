@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,8 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+
+use Kernel::Language qw(Translatable);
 
 use base qw(Kernel::System::DynamicField::Driver::BaseDateTime);
 
@@ -28,7 +30,7 @@ our @ObjectDependencies = (
 
 Kernel::System::DynamicField::Driver::Date
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 DynamicFields Date Driver delegate
 
@@ -37,9 +39,7 @@ DynamicFields Date Driver delegate
 This module implements the public interface of L<Kernel::System::DynamicField::Backend>.
 Please look there for a detailed reference of the functions.
 
-=over 4
-
-=item new()
+=head2 new()
 
 usually, you want to create an instance of this
 by using Kernel::System::DynamicField::Backend->new();
@@ -167,8 +167,27 @@ sub ValueValidate {
             String => $Param{Value},
         );
         my $SystemTime = $TimeObject->SystemTime();
+        my ( $SystemTimePast, $SystemTimeFuture ) = $SystemTime;
 
-        if ( $DateRestriction eq 'DisableFutureDates' && $ValueSystemTime > $SystemTime ) {
+        # if validating date only value, allow today for selection
+        if ( $Param{DynamicFieldConfig}->{FieldType} eq 'Date' ) {
+
+            # calculate today system time boundaries
+            my @Today = $TimeObject->SystemTime2Date(
+                SystemTime => $SystemTime,
+            );
+            $SystemTimePast = $TimeObject->Date2SystemTime(
+                Year   => $Today[5],
+                Month  => $Today[4],
+                Day    => $Today[3],
+                Hour   => 0,
+                Minute => 0,
+                Second => 0,
+            );
+            $SystemTimeFuture = $SystemTimePast + 60 * 60 * 24 - 1;    # 23:59:59
+        }
+
+        if ( $DateRestriction eq 'DisableFutureDates' && $ValueSystemTime > $SystemTimeFuture ) {
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'error',
                 Message =>
@@ -176,7 +195,7 @@ sub ValueValidate {
             );
             return;
         }
-        elsif ( $DateRestriction eq 'DisablePastDates' && $ValueSystemTime < $SystemTime ) {
+        elsif ( $DateRestriction eq 'DisablePastDates' && $ValueSystemTime < $SystemTimePast ) {
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'error',
                 Message =>
@@ -200,25 +219,32 @@ sub SearchSQLGet {
         SmallerThanEquals => '<=',
     );
 
-    if ( $Operators{ $Param{Operator} } ) {
-        my $SQL = " $Param{TableAlias}.value_date $Operators{$Param{Operator}} '"
-            . $Kernel::OM->Get('Kernel::System::DB')->Quote( $Param{SearchTerm} );
-
-        # Append hh:mm:ss if only the ISO date was supplied to get a full date-time string.
-        if ( $Param{SearchTerm} =~ m{\A \d{4}-\d{2}-\d{2}\z}xms ) {
-            $SQL .= " 00:00:00";
+    if ( $Param{Operator} eq 'Empty' ) {
+        if ( $Param{SearchTerm} ) {
+            return " $Param{TableAlias}.value_date IS NULL ";
         }
-
-        $SQL .= "' ";
-        return $SQL;
+        else {
+            return " $Param{TableAlias}.value_date IS NOT NULL ";
+        }
+    }
+    elsif ( !$Operators{ $Param{Operator} } ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            'Priority' => 'error',
+            'Message'  => "Unsupported Operator $Param{Operator}",
+        );
+        return;
     }
 
-    $Kernel::OM->Get('Kernel::System::Log')->Log(
-        'Priority' => 'error',
-        'Message'  => "Unsupported Operator $Param{Operator}",
-    );
+    my $SQL = " $Param{TableAlias}.value_date $Operators{ $Param{Operator} } '"
+        . $Kernel::OM->Get('Kernel::System::DB')->Quote( $Param{SearchTerm} );
 
-    return;
+    # Append hh:mm:ss if only the ISO date was supplied to get a full date-time string.
+    if ( $Param{SearchTerm} =~ m{\A \d{4}-\d{2}-\d{2}\z}xms ) {
+        $SQL .= " 00:00:00";
+    }
+
+    $SQL .= "' ";
+    return $SQL;
 }
 
 sub EditFieldRender {
@@ -258,7 +284,7 @@ sub EditFieldRender {
         );
     }
 
-    # extract the dynamic field value form the web request
+    # extract the dynamic field value from the web request
     my $FieldValues = $Self->EditFieldValueGet(
         ReturnValueStructure => 1,
         %Param,
@@ -384,7 +410,7 @@ sub EditFieldValueGet {
     my %DynamicFieldValues;
 
     # check if there is a Template and retrieve the dynamic field value from there
-    if ( IsHashRefWithData( $Param{Template} ) ) {
+    if ( IsHashRefWithData( $Param{Template} ) && defined $Param{Template}->{ $Prefix . 'Used' } ) {
         for my $Type (qw(Used Year Month Day)) {
             $DynamicFieldValues{ $Prefix . $Type } = $Param{Template}->{ $Prefix . $Type } || 0;
         }
@@ -505,12 +531,31 @@ sub EditFieldValueValidate {
             String => $ManualTimeStamp,
         );
         my $SystemTime = $TimeObject->SystemTime();
+        my ( $SystemTimePast, $SystemTimeFuture ) = $SystemTime;
 
-        if ( $DateRestriction eq 'DisableFutureDates' && $ValueSystemTime > $SystemTime ) {
+        # if validating date only value, allow today for selection
+        if ( $Param{DynamicFieldConfig}->{FieldType} eq 'Date' ) {
+
+            # calculate today system time boundaries
+            my @Today = $TimeObject->SystemTime2Date(
+                SystemTime => $SystemTime,
+            );
+            $SystemTimePast = $TimeObject->Date2SystemTime(
+                Year   => $Today[5],
+                Month  => $Today[4],
+                Day    => $Today[3],
+                Hour   => 0,
+                Minute => 0,
+                Second => 0,
+            );
+            $SystemTimeFuture = $SystemTimePast + 60 * 60 * 24 - 1;    # 23:59:59
+        }
+
+        if ( $DateRestriction eq 'DisableFutureDates' && $ValueSystemTime > $SystemTimeFuture ) {
             $ServerError  = 1;
             $ErrorMessage = "Invalid date (need a past date)!";
         }
-        elsif ( $DateRestriction eq 'DisablePastDates' && $ValueSystemTime < $SystemTime ) {
+        elsif ( $DateRestriction eq 'DisablePastDates' && $ValueSystemTime < $SystemTimePast ) {
             $ServerError  = 1;
             $ErrorMessage = "Invalid date (need a future date)!";
         }
@@ -690,10 +735,10 @@ EOF
 
         $HTMLString .= $Param{LayoutObject}->BuildSelection(
             Data => {
-                'Before' => 'more than ... ago',
-                'Last'   => 'within the last ...',
-                'Next'   => 'within the next ...',
-                'After'  => 'in more than ...',
+                'Before' => Translatable('more than ... ago'),
+                'Last'   => Translatable('within the last ...'),
+                'Next'   => Translatable('within the next ...'),
+                'After'  => Translatable('in more than ...'),
             },
             Sort           => 'IndividualKey',
             SortIndividual => [ 'Before', 'Last', 'Next', 'After' ],
@@ -707,20 +752,20 @@ EOF
         );
         $HTMLString .= ' ' . $Param{LayoutObject}->BuildSelection(
             Data => {
-                minute => 'minute(s)',
-                hour   => 'hour(s)',
-                day    => 'day(s)',
-                week   => 'week(s)',
-                month  => 'month(s)',
-                year   => 'year(s)',
+                minute => Translatable('minute(s)'),
+                hour   => Translatable('hour(s)'),
+                day    => Translatable('day(s)'),
+                week   => Translatable('week(s)'),
+                month  => Translatable('month(s)'),
+                year   => Translatable('year(s)'),
             },
             Name       => $FieldName . 'Format',
-            SelectedID => $Value->{Format}->{ $FieldName . 'Format' } || 'day',
+            SelectedID => $Value->{Format}->{ $FieldName . 'Format' } || Translatable('day'),
         );
 
         my $AdditionalText;
         if ( $Param{UseLabelHints} ) {
-            $AdditionalText = 'before/after';
+            $AdditionalText = Translatable('before/after');
         }
 
         # call EditLabelRender on the common driver
@@ -765,7 +810,7 @@ EOF
 
     my $AdditionalText;
     if ( $Param{UseLabelHints} ) {
-        $AdditionalText = 'between';
+        $AdditionalText = Translatable('between');
     }
 
     # call EditLabelRender on the common Driver
@@ -1301,8 +1346,6 @@ sub RandomValueSet {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

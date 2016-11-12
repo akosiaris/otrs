@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -14,6 +14,7 @@ use warnings;
 our $ObjectManagerDisabled = 1;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 sub new {
     my ( $Type, %Param ) = @_;
@@ -83,7 +84,7 @@ sub Run {
     for my $DynamicFieldConfig ( @{$DynamicField} ) {
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         $DynamicFieldValues{ $DynamicFieldConfig->{Name} } =
             $BackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
@@ -110,7 +111,7 @@ sub Run {
     if ( $GetParam{FromChatID} ) {
         if ( !$ConfigObject->Get('ChatEngine::Active') ) {
             return $LayoutObject->FatalError(
-                Message => "Chat is not active.",
+                Message => Translatable('Chat is not active.'),
             );
         }
 
@@ -123,7 +124,7 @@ sub Run {
 
         if ( !%ChatParticipant ) {
             return $LayoutObject->FatalError(
-                Message => "No permission.",
+                Message => Translatable('No permission.'),
             );
         }
     }
@@ -145,8 +146,9 @@ sub Run {
             # warn if there is no (valid) default queue and the customer can't select one
             elsif ( !$Config->{'Queue'} ) {
                 $LayoutObject->CustomerFatalError(
-                    Message => 'Check SysConfig setting for ' . $Self->{Action} . '::QueueDefault.',
-                    Comment => 'Please contact your administrator',
+                    Message => $LayoutObject->{LanguageObject}
+                        ->Translate( 'Check SysConfig setting for %s::QueueDefault.', $Self->{Action} ),
+                    Comment => Translatable('Please contact the administrator.'),
                 );
                 return;
             }
@@ -155,7 +157,13 @@ sub Run {
             my ( $QueueIDParam, $QueueParam ) = split( /\|\|/, $GetParam{Dest} );
             my $QueueIDLookup = $QueueObject->QueueLookup( Queue => $QueueParam );
             if ( $QueueIDLookup && $QueueIDLookup eq $QueueIDParam ) {
-                $Param{ToSelected}          = $GetParam{Dest};
+                my $CustomerPanelOwnSelection = $Kernel::OM->Get('Kernel::Config')->Get('CustomerPanelOwnSelection');
+                if ( %{ $CustomerPanelOwnSelection // {} } ) {
+                    $Param{ToSelected} = $QueueIDParam . '||' . $CustomerPanelOwnSelection->{$QueueParam};
+                }
+                else {
+                    $Param{ToSelected} = $GetParam{Dest};
+                }
                 $ACLCompatGetParam{QueueID} = $QueueIDLookup;
             }
         }
@@ -239,9 +247,6 @@ sub Run {
     }
     elsif ( $Self->{Subaction} eq 'StoreNew' ) {
 
-        # challenge token check for write action
-        $LayoutObject->ChallengeTokenCheck( Type => 'Customer' );
-
         my $NextScreen = $Config->{NextScreenAfterNewTicket};
         my %Error;
 
@@ -275,10 +280,10 @@ sub Run {
             $GetParam{TypeID} = $TypeList{ $Config->{'TicketTypeDefault'} };
             if ( !$GetParam{TypeID} ) {
                 $LayoutObject->CustomerFatalError(
-                    Message => 'Check SysConfig setting for '
-                        . $Self->{Action}
-                        . '::TicketTypeDefault.',
-                    Comment => 'Please contact your administrator',
+                    Message =>
+                        $LayoutObject->{LanguageObject}
+                        ->Translate( 'Check SysConfig setting for %s::TicketTypeDefault.', $Self->{Action} ),
+                    Comment => Translatable('Please contact the administrator.'),
                 );
                 return;
             }
@@ -392,8 +397,9 @@ sub Run {
                     my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
                     $Output .= $LayoutObject->CustomerError(
                         Message =>
-                            "Could not perform validation on field $DynamicFieldConfig->{Label}!",
-                        Comment => 'Please contact your administrator',
+                            $LayoutObject->{LanguageObject}
+                            ->Translate( 'Could not perform validation on field %s!', $DynamicFieldConfig->{Label} ),
+                        Comment => Translatable('Please contact the administrator.'),
                     );
                     $Output .= $LayoutObject->CustomerFooter();
                     return $Output;
@@ -528,6 +534,9 @@ sub Run {
             $Output .= $LayoutObject->CustomerFooter();
             return $Output;
         }
+
+        # challenge token check for write action
+        $LayoutObject->ChallengeTokenCheck( Type => 'Customer' );
 
         # if customer is not allowed to set priority, set it to default
         if ( !$Config->{Priority} ) {
@@ -906,8 +915,8 @@ sub Run {
     }
     else {
         return $LayoutObject->ErrorScreen(
-            Message => 'No Subaction!!',
-            Comment => 'Please contact your administrator',
+            Message => Translatable('No Subaction!'),
+            Comment => Translatable('Please contact the administrator.'),
         );
     }
 
@@ -1031,13 +1040,6 @@ sub _MaskNew {
     my $DynamicFieldNames = $Self->_GetFieldsToUpdate(
         OnlyDynamicFields => 1,
     );
-
-    # create a string with the quoted dynamic field names separated by commas
-    if ( IsArrayRefWithData($DynamicFieldNames) ) {
-        for my $Field ( @{$DynamicFieldNames} ) {
-            $Param{DynamicFieldNamesStrg} .= ", '" . $Field . "'";
-        }
-    }
 
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
@@ -1180,40 +1182,26 @@ sub _MaskNew {
             );
         }
 
-        if ( $Config->{ServiceMandatory} ) {
-            $Param{ServiceStrg} = $LayoutObject->BuildSelection(
-                Data         => \%Services,
-                Name         => 'ServiceID',
-                SelectedID   => $Param{ServiceID},
-                Class        => "Validate_Required Modernize " . ( $Param{Errors}->{ServiceIDInvalid} || '' ),
-                PossibleNone => 1,
-                TreeView     => $TreeView,
-                Sort         => 'TreeView',
-                Translation  => 0,
-                Max          => 200,
-            );
-            $LayoutObject->Block(
-                Name => 'TicketServiceMandatory',
-                Data => \%Param,
-            );
-        }
-        else {
-            $Param{ServiceStrg} = $LayoutObject->BuildSelection(
-                Data         => \%Services,
-                Name         => 'ServiceID',
-                SelectedID   => $Param{ServiceID},
-                Class        => 'Modernize',
-                PossibleNone => 1,
-                TreeView     => $TreeView,
-                Sort         => 'TreeView',
-                Translation  => 0,
-                Max          => 200,
-            );
-            $LayoutObject->Block(
-                Name => 'TicketService',
-                Data => \%Param,
-            );
-        }
+        $Param{ServiceStrg} = $LayoutObject->BuildSelection(
+            Data       => \%Services,
+            Name       => 'ServiceID',
+            SelectedID => $Param{ServiceID},
+            Class      => 'Modernize '
+                . ( $Config->{ServiceMandatory} ? 'Validate_Required ' : '' )
+                . ( $Param{Errors}->{ServiceIDInvalid} || '' ),
+            PossibleNone => 1,
+            TreeView     => $TreeView,
+            Sort         => 'TreeView',
+            Translation  => 0,
+            Max          => 200,
+        );
+        $LayoutObject->Block(
+            Name => 'TicketService',
+            Data => {
+                ServiceMandatory => $Config->{ServiceMandatory} || 0,
+                %Param,
+            },
+        );
 
         # reset previous ServiceID to reset SLA-List if no service is selected
         if ( !$Services{ $Param{ServiceID} || '' } ) {
@@ -1229,38 +1217,25 @@ sub _MaskNew {
                 );
             }
 
-            if ( $Config->{SLAMandatory} ) {
-                $Param{SLAStrg} = $LayoutObject->BuildSelection(
-                    Data         => \%SLA,
-                    Name         => 'SLAID',
-                    SelectedID   => $Param{SLAID},
-                    Class        => "Validate_Required Modernize " . ( $Param{Errors}->{SLAIDInvalid} || '' ),
-                    PossibleNone => 1,
-                    Sort         => 'AlphanumericValue',
-                    Translation  => 0,
-                    Max          => 200,
-                );
-                $LayoutObject->Block(
-                    Name => 'TicketSLAMandatory',
-                    Data => \%Param,
-                );
-            }
-            else {
-                $Param{SLAStrg} = $LayoutObject->BuildSelection(
-                    Data         => \%SLA,
-                    Name         => 'SLAID',
-                    SelectedID   => $Param{SLAID},
-                    Class        => 'Modernize',
-                    PossibleNone => 1,
-                    Sort         => 'AlphanumericValue',
-                    Translation  => 0,
-                    Max          => 200,
-                );
-                $LayoutObject->Block(
-                    Name => 'TicketSLA',
-                    Data => \%Param,
-                );
-            }
+            $Param{SLAStrg} = $LayoutObject->BuildSelection(
+                Data       => \%SLA,
+                Name       => 'SLAID',
+                SelectedID => $Param{SLAID},
+                Class      => 'Modernize '
+                    . ( $Config->{SLAMandatory} ? 'Validate_Required ' : '' )
+                    . ( $Param{Errors}->{SLAInvalid} || '' ),
+                PossibleNone => 1,
+                Sort         => 'AlphanumericValue',
+                Translation  => 0,
+                Max          => 200,
+            );
+            $LayoutObject->Block(
+                Name => 'TicketSLA',
+                Data => {
+                    SLAMandatory => $Config->{SLAMandatory} || 0,
+                    %Param,
+                    }
+            );
         }
     }
 
@@ -1353,8 +1328,8 @@ sub _MaskNew {
         $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
         $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-        $LayoutObject->Block(
-            Name => 'RichText',
+        # set up customer rich text editor
+        $LayoutObject->CustomerSetRichTextParameters(
             Data => \%Param,
         );
     }
@@ -1371,6 +1346,12 @@ sub _MaskNew {
             },
         );
     }
+
+    # send data to JS
+    $LayoutObject->AddJSData(
+        Key   => 'DynamicFieldNames',
+        Value => $DynamicFieldNames,
+    );
 
     # get output back
     return $LayoutObject->Output(

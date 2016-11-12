@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -20,13 +20,13 @@
                 [% Data.ProfilesStrg %]
                 <div id="SearchProfileAddBlock">
                     <input type="text" name="Name" id="SearchProfileAddName"/>
-                    <button type="button" title="[% Translate("Create Template") | html %]" id="SearchProfileAddAction">[% Translate("Add") | html %]</button>
+                    <button class="CallForAction" type="button" title="[% Translate("Create Template") | html %]" id="SearchProfileAddAction"><span>[% Translate("Add") | html %]</span></button>
                 </div>
             </div>
             <div class="Field">
-                <button id="SearchProfileNew" value="[% Translate("Create New") | html %]">[% Translate("Create New") | html %]</button>
-                <button id="SearchProfileDelete" class="Hidden" value="[% Translate("Delete") | html %]">[% Translate("Delete") | html %]</button>
-                <button id="SearchProfileAsLink" class="Hidden" value="[% Translate("Profile link") | html %]">[% Translate("Profile link") | html %]</button>
+                <button class="CallForAction" id="SearchProfileNew" value="[% Translate("Create New") | html %]"><span>[% Translate("Create New") | html %]</span></button>
+                <button id="SearchProfileDelete" class="Hidden CallForAction" value="[% Translate("Delete") | html %]"><span>[% Translate("Delete") | html %]</span></button>
+                <button id="SearchProfileAsLink" class="Hidden CallForAction" value="[% Translate("Profile link") | html %]"><span>[% Translate("Profile link") | html %]</span></button>
             </div>
             <div class="Clear"></div>
             <label>[% Translate("Save changes in template") | html %]:</label>
@@ -42,7 +42,7 @@
             <label>[% Translate("Add another attribute") | html %]:</label>
             <div class="Field">
                 [% Data.AttributesStrg %]
-                <a class="AddButton" href="#" title="Add entry"><i class="fa fa-plus-square-o"></i><span class="InvisibleText">[% Translate("Add") | html %]</span></a>
+                <a class="AddButton" href="#" title="[% Translate("Add entry") | html %]"><i class="fa fa-plus-square-o"></i><span class="InvisibleText">[% Translate("Add") | html %]</span></a>
             </div>
             <div class="Clear"></div>
             <label>[% Translate("Output") | html %]:</label>
@@ -76,15 +76,27 @@
             <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
         </div>
         <div class="Clear"></div>
-        <label for="CustomerID" id="LabelCustomerID">[% Translate("CustomerID") | html %] [% Translate("(e. g. 234321)") | html %]:</label>
+        <label for="CustomerID" id="LabelCustomerID">[% Translate("CustomerID (complex search)") | html %]:</label>
         <div class="Field">
-            <input type="text" name="CustomerID" value="[% Data.CustomerID | html %]" class="W50pc"/>
+            <input type="text" name="CustomerID" placeholder="[% Translate("(e. g. 234321)") | html %]" value="[% Data.CustomerID | html %]" class="W50pc"/>
             <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
         </div>
         <div class="Clear"></div>
-        <label for="CustomerUserLogin" id="LabelCustomerUserLogin">[% Translate("Customer User Login") | html %] :</label>
+        <label for="CustomerIDRaw" id="LabelCustomerIDRaw">[% Translate("CustomerID (exact match)") | html %]:</label>
+        <div class="Field">
+            <input type="text" name="CustomerIDRaw" placeholder="[% Translate("(e. g. 234321)") | html %]" value="[% Data.CustomerIDRaw | html %]" class="W50pc"/>
+            <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
+        </div>
+        <div class="Clear"></div>
+        <label for="CustomerUserLogin" id="LabelCustomerUserLogin">[% Translate("Customer User Login (complex search)") | html %]:</label>
         <div class="Field">
             <input type="text" name="CustomerUserLogin" placeholder="[% Translate("(e. g. U5150)") | html %]" value="[% Data.CustomerUserLogin | html %]" class="W50pc"/>
+            <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
+        </div>
+        <div class="Clear"></div>
+        <label for="CustomerUserLoginRaw" id="LabelCustomerUserLoginRaw">[% Translate("Customer User Login (exact match)") | html %]:</label>
+        <div class="Field">
+            <input type="text" name="CustomerUserLoginRaw" placeholder="[% Translate("(e. g. U5150)") | html %]" value="[% Data.CustomerUserLoginRaw | html %]" class="W50pc"/>
             <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
         </div>
         <div class="Clear"></div>
@@ -262,6 +274,20 @@
             <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
         </div>
         <div class="Clear"></div>
+        <label for="TicketPendingTimePoint" id="LabelTicketPendingTimePoint">[% Translate("Ticket Pending Until Time (before/after)") | html %]:</label>
+        <div class="Field">
+            <input type="hidden" name="PendingTimeSearchType" value="TimePoint" [% Data.item("PendingTimeSearchType::TimePoint") %]/>
+            [% Data.TicketPendingTimePointStart %] [% Data.TicketPendingTimePoint %] [% Data.TicketPendingTimePointFormat %]
+            <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
+        </div>
+        <div class="Clear"></div>
+        <label for="TicketPendingTimeSlot" id="LabelTicketPendingTimeSlot">[% Translate("Ticket Pending Until Time (between)") | html %]:</label>
+        <div class="Field">
+            <input type="hidden" name="PendingTimeSearchType" value="TimeSlot" [% Data.item("PendingTimeSearchType::TimeSlot") %]/>
+            [% Data.TicketPendingTimeStart %] [% Translate("and") | html %] [% Data.TicketPendingTimeStop %]
+            <a class="RemoveButton" href="#" title="[% Translate("Remove this entry") | html %]"><i class="fa fa-minus-square-o"></i><span class="InvisibleText">[% Translate("Remove") | html %]</span></a>
+        </div>
+        <div class="Clear"></div>
         <label for="TicketCloseTimePoint" id="LabelTicketCloseTimePoint">[% Translate("Ticket Close Time (before/after)") | html %]:</label>
         <div class="Field">
             <input type="hidden" name="CloseTimeSearchType" value="TimePoint" [% Data.item("CloseTimeSearchType::TimePoint") %]/>
@@ -303,28 +329,7 @@
 </div>
 
 <div class="ContentFooter Center">
-    <button id="SearchFormSubmit" class="Primary CallForAction" value="Run search"><span><i class="fa fa-search"></i> [% Translate("Run search") | html %]</span></button>
+    <button id="SearchFormSubmit" class="Primary CallForAction" value="[% Translate("Run search") | html %]"><span><i class="fa fa-search"></i> [% Translate("Run search") | html %]</span></button>
 </div>
 
-<script type="text/javascript">//<![CDATA[
-    window.setTimeout(function (){
-[% RenderBlockStart("SearchAJAXShow") %]
-        Core.Agent.Search.SearchAttributeAdd("[% Data.Attribute | html %]");
-[% RenderBlockEnd("SearchAJAXShow") %]
-        Core.Agent.Search.AdditionalAttributeSelectionRebuild();
-    }, 0);
-//]]></script>
-
 [% RenderBlockEnd("SearchAJAX") %]
-
-
-
-[% RenderBlockStart("Search") %]
-
-[% WRAPPER JSOnDocumentComplete %]
-<script type="text/javascript">//<![CDATA[
-    Core.Agent.Search.OpenSearchDialog( '[% Env("Action") %]' );
-//]]></script>
-[% END %]
-
-[% RenderBlockEnd("Search") %]

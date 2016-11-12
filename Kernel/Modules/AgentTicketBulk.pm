@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -10,6 +10,8 @@ package Kernel::Modules::AgentTicketBulk;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -42,8 +44,8 @@ sub Run {
         # check needed stuff
         if ( !@TicketIDs ) {
             return $LayoutObject->ErrorScreen(
-                Message => 'Can\'t lock Tickets, no TicketIDs are given!',
-                Comment => 'Please contact the admin.',
+                Message => Translatable('Can\'t lock Tickets, no TicketIDs are given!'),
+                Comment => Translatable('Please contact the administrator.'),
             );
         }
 
@@ -76,7 +78,7 @@ sub Run {
 
         if ( $Message ne '' ) {
             return $LayoutObject->ErrorScreen(
-                Message => "Ticket ($Message) is not unlocked!",
+                Message => $LayoutObject->{LanguageObject}->Translate( "Ticket (%s) is not unlocked!", $Message ),
             );
         }
 
@@ -92,7 +94,7 @@ sub Run {
     # check if bulk feature is enabled
     if ( !$ConfigObject->Get('Ticket::Frontend::BulkFeature') ) {
         return $LayoutObject->ErrorScreen(
-            Message => 'Bulk feature is not enabled!',
+            Message => Translatable('Bulk feature is not enabled!'),
         );
     }
 
@@ -132,15 +134,15 @@ sub Run {
     if ( !@ValidTicketIDs ) {
         if ( $Config->{RequiredLock} ) {
             return $LayoutObject->ErrorScreen(
-                Message => 'No selectable TicketID is given!',
+                Message => Translatable('No selectable TicketID is given!'),
                 Comment =>
-                    'You either selected no ticket or only tickets which are locked by other agents',
+                    Translatable('You either selected no ticket or only tickets which are locked by other agents.'),
             );
         }
         else {
             return $LayoutObject->ErrorScreen(
-                Message => 'No TicketID is given!',
-                Comment => 'You need to select at least one ticket',
+                Message => Translatable('No TicketID is given!'),
+                Comment => Translatable('You need to select at least one ticket.'),
             );
         }
     }
@@ -423,7 +425,8 @@ sub Run {
         # check if it's already locked by somebody else
         if ( !$Config->{RequiredLock} ) {
             $Output .= $LayoutObject->Notify(
-                Data => "$Ticket{TicketNumber}: "
+                Priority => 'Info',
+                Data     => "$Ticket{TicketNumber}: "
                     . $LayoutObject->{LanguageObject}->Translate("Ticket selected."),
             );
         }
@@ -438,28 +441,36 @@ sub Run {
                 );
                 next TICKET_ID;
             }
-            else {
+            elsif ( $Ticket{Lock} eq 'unlock' ) {
                 $LockedTickets .= "LockedTicketID=" . $TicketID . ';';
                 $Param{TicketsWereLocked} = 1;
+
+                # set lock
+                $TicketObject->TicketLockSet(
+                    TicketID => $TicketID,
+                    Lock     => 'lock',
+                    UserID   => $Self->{UserID},
+                );
+
+                # set user id
+                $TicketObject->TicketOwnerSet(
+                    TicketID  => $TicketID,
+                    UserID    => $Self->{UserID},
+                    NewUserID => $Self->{UserID},
+                );
+                $Output .= $LayoutObject->Notify(
+                    Data => "$Ticket{TicketNumber}: "
+                        . $LayoutObject->{LanguageObject}->Translate("Ticket locked."),
+                );
+            }
+            else {
+                $Output .= $LayoutObject->Notify(
+                    Priority => 'Info',
+                    Data     => "$Ticket{TicketNumber}: "
+                        . $LayoutObject->{LanguageObject}->Translate("Ticket selected."),
+                );
             }
 
-            # set lock
-            $TicketObject->TicketLockSet(
-                TicketID => $TicketID,
-                Lock     => 'lock',
-                UserID   => $Self->{UserID},
-            );
-
-            # set user id
-            $TicketObject->TicketOwnerSet(
-                TicketID  => $TicketID,
-                UserID    => $Self->{UserID},
-                NewUserID => $Self->{UserID},
-            );
-            $Output .= $LayoutObject->Notify(
-                Data => "$Ticket{TicketNumber}: "
-                    . $LayoutObject->{LanguageObject}->Translate("Ticket locked."),
-            );
         }
 
         # remember selected ticket ids
@@ -1067,14 +1078,12 @@ sub _Mask {
             }
         }
         $Param{ResponsibleStrg} = $LayoutObject->BuildSelection(
-            Data => {
-                '' => '-',
-                %AllGroupsMembers
-            },
-            Name        => 'ResponsibleID',
-            Translation => 0,
-            SelectedID  => $Param{ResponsibleID},
-            Class       => 'Modernize',
+            Data         => \%AllGroupsMembers,
+            PossibleNone => 1,
+            Name         => 'ResponsibleID',
+            Translation  => 0,
+            SelectedID   => $Param{ResponsibleID},
+            Class        => 'Modernize',
         );
         $LayoutObject->Block(
             Name => 'Responsible',
@@ -1200,8 +1209,8 @@ sub _Mask {
         $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
         $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-        $LayoutObject->Block(
-            Name => 'RichText',
+        # set up rich text editor
+        $LayoutObject->SetRichTextParameters(
             Data => \%Param,
         );
     }
@@ -1216,11 +1225,9 @@ sub _Mask {
             $URL .= ';' . $Self->{SessionName} . '=' . $Self->{SessionID};
         }
 
-        $LayoutObject->Block(
-            Name => 'ParentReload',
-            Data => {
-                URL => $URL,
-            },
+        $LayoutObject->AddJSData(
+            Key   => 'TicketBulkURL',
+            Value => $LayoutObject->{Baselink} . $URL,
         );
 
         # show undo&close link

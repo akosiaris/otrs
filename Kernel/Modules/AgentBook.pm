@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -62,16 +62,15 @@ sub Run {
     # get layout object
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
 
-    # build customer search auto-complete field
-    $LayoutObject->Block(
-        Name => 'CustomerSearchAutoComplete',
-    );
+    # get config object
+    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
     if (%List) {
         $LayoutObject->Block(
             Name => 'SearchResult',
         );
 
+        my %AddressBook;
         my $Count = 1;
         for ( reverse sort { $List{$b}->{Email} cmp $List{$a}->{Email} } keys %List ) {
             $LayoutObject->Block(
@@ -84,8 +83,17 @@ sub Run {
                         ->Encode( Data => { $List{$_}->{Email} => $List{$_}->{CustomerKey} } ),
                 },
             );
+
+            $AddressBook{$Count} = $List{$_}->{Email};
             $Count++;
         }
+
+        # add data to JS
+        $LayoutObject->AddJSData(
+            Key   => 'AddressBook',
+            Value => \%AddressBook,
+        );
+
     }
 
     # start with page ...

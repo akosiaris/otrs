@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -24,22 +24,16 @@ our @ObjectDependencies = (
 
 Kernel::System::NotificationEvent - to manage the notifications
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All functions to manage the notification and the notification jobs.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $NotificationEventObject = $Kernel::OM->Get('Kernel::System::NotificationEvent');
 
 =cut
@@ -54,7 +48,7 @@ sub new {
     return $Self;
 }
 
-=item NotificationList()
+=head2 NotificationList()
 
 returns a hash of all notifications
 
@@ -75,21 +69,21 @@ sub NotificationList {
         $Data{ $Row[0] } = $Row[1];
     }
 
-    if ( $Param{Details} ) {
-        for my $ItemID ( sort keys %Data ) {
+    return %Data if !$Param{Details};
 
-            my %NotificationData = $Self->NotificationGet(
-                ID     => $ItemID,
-                UserID => 1,
-            );
-            $Data{$ItemID} = \%NotificationData;
-        }
+    for my $ItemID ( sort keys %Data ) {
+
+        my %NotificationData = $Self->NotificationGet(
+            ID     => $ItemID,
+            UserID => 1,
+        );
+        $Data{$ItemID} = \%NotificationData;
     }
 
     return %Data;
 }
 
-=item NotificationGet()
+=head2 NotificationGet()
 
 returns a hash of the notification data
 
@@ -189,7 +183,8 @@ sub NotificationGet {
         SQL => '
             SELECT event_key, event_value
             FROM notification_event_item
-            WHERE notification_id = ?',
+            WHERE notification_id = ?
+            ORDER BY event_key, event_value ASC',
         Bind => [ \$Data{ID} ],
     );
 
@@ -219,7 +214,7 @@ sub NotificationGet {
     return %Data;
 }
 
-=item NotificationAdd()
+=head2 NotificationAdd()
 
 adds a new notification to the database
 
@@ -380,7 +375,7 @@ sub NotificationAdd {
     return $ID;
 }
 
-=item NotificationUpdate()
+=head2 NotificationUpdate()
 
 update a notification in database
 
@@ -527,7 +522,7 @@ sub NotificationUpdate {
     return 1;
 }
 
-=item NotificationDelete()
+=head2 NotificationDelete()
 
 deletes an notification from the database
 
@@ -621,7 +616,7 @@ sub NotificationDelete {
     return 1;
 }
 
-=item NotificationEventCheck()
+=head2 NotificationEventCheck()
 
 returns array of notification affected by event
 
@@ -657,7 +652,8 @@ sub NotificationEventCheck {
             WHERE ne.id = nei.notification_id
                 AND ne.valid_id IN ( $ValidIDString )
                 AND nei.event_key = 'Events'
-                AND nei.event_value = ?",
+                AND nei.event_value = ?
+            ORDER BY nei.notification_id ASC",
         Bind => [ \$Param{Event} ],
     );
 
@@ -669,7 +665,7 @@ sub NotificationEventCheck {
     return @IDs;
 }
 
-=item NotificationImport()
+=head2 NotificationImport()
 
 import an Notification YAML file/content
 
@@ -706,11 +702,13 @@ sub NotificationImport {
             return {
                 Success => 0,
                 Message => "$Needed is missing can not continue.",
-                }
+            };
         }
     }
 
-    my $NotificationData = $Kernel::OM->Get('Kernel::System::YAML')->Load( Data => $Param{Content} );
+    my $NotificationData = $Kernel::OM->Get('Kernel::System::YAML')->Load(
+        Data => $Param{Content},
+    );
 
     if ( ref $NotificationData ne 'ARRAY' ) {
         return {
@@ -724,7 +722,9 @@ sub NotificationImport {
     my @AddedNotifications;
     my @NotificationErrors;
 
-    my %CurrentNotifications = $Self->NotificationList( UserID => $Param{UserID} );
+    my %CurrentNotifications = $Self->NotificationList(
+        UserID => $Param{UserID},
+    );
     my %ReverseCurrentNotifications = reverse %CurrentNotifications;
 
     Notification:
@@ -769,12 +769,10 @@ sub NotificationImport {
         AddedNotifications   => join( ', ', @AddedNotifications ) || '',
         UpdatedNotifications => join( ', ', @UpdatedNotifications ) || '',
         NotificationErrors   => join( ', ', @NotificationErrors ) || '',
-        }
+    };
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

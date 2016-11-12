@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU AFFERO General Public License as published by
@@ -9,12 +9,12 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 # or see http://www.gnu.org/licenses/agpl.txt.
 # --
 
@@ -40,7 +40,7 @@ my $DBDump      = '';
 getopt( 'hcrtd', \%Opts );
 if ( exists $Opts{h} ) {
     print "backup.pl - backup script\n";
-    print "Copyright (C) 2001-2015 OTRS AG, http://otrs.com/\n";
+    print "Copyright (C) 2001-2016 OTRS AG, http://otrs.com/\n";
     print "usage: backup.pl -d /data_backup_dir/ [-c gzip|bzip2] [-r 30] [-t fullbackup|nofullbackup|dbonly]\n";
     exit 1;
 }
@@ -131,6 +131,12 @@ for my $CMD ( 'cp', 'tar', $DBDump, $CompressCMD ) {
 
 # create new backup directory
 my $Home = $Kernel::OM->Get('Kernel::Config')->Get('Home');
+
+# append trailing slash to home directory, if it's missing
+if ( $Home !~ m{\/\z} ) {
+    $Home .= '/';
+}
+
 chdir($Home);
 
 my ( $Sec, $Min, $Hour, $Day, $Month, $Year, $WeekDay ) = $Kernel::OM->Get('Kernel::System::Time')->SystemTime2Date(
@@ -187,7 +193,7 @@ else {
     }
 
     # backup datadir
-    if ( $ArticleDir !~ m/\Q$Home\E/ ) {
+    if ( $ArticleDir !~ m/\A\Q$Home\E/ ) {
         print "Backup $Directory/DataDir.tar.gz ... ";
         if ( !system("tar -czf $Directory/DataDir.tar.gz $ArticleDir") ) {
             print "done\n";

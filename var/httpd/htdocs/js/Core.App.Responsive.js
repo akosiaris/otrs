@@ -1,5 +1,5 @@
 // --
-// Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+// Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 // --
 // This software comes with ABSOLUTELY NO WARRANTY. For details, see
 // the enclosed file COPYING for license information (AGPL). If you
@@ -192,7 +192,7 @@ Core.App.Responsive = (function (TargetNS) {
                 // if the DesktopMode has been triggered manually, we add a switch to the footer
                 // for switching back to mobile mode
                 if (!$('#ViewModeSwitch').length) {
-                    $('#Footer').append('<div id="ViewModeSwitch"><a href="#">' + Core.Config.Get('ViewModeSwitchMobile') + '</a></div>');
+                    $('#Footer').append('<div id="ViewModeSwitch"><a href="#">' + Core.Language.Translate('Switch to mobile mode') + '</a></div>');
                     $('#ViewModeSwitch').on('click.Responsive', function() {
                         localStorage.setItem("DesktopMode", 0);
                         location.reload();
@@ -251,6 +251,10 @@ Core.App.Responsive = (function (TargetNS) {
 
         CheckScreenResolution();
     };
+
+    // responsive initialization must run as late as possible to include all event subscriptions
+    // at the initialization process
+    Core.Init.RegisterNamespace(TargetNS, 'FINISH');
 
     return TargetNS;
 

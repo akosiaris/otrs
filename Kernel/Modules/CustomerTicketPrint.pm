@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -34,14 +35,18 @@ sub Run {
 
     # check needed stuff
     if ( !$Self->{TicketID} ) {
-        return $LayoutObject->ErrorScreen( Message => 'Need TicketID!' );
+        return $LayoutObject->ErrorScreen(
+            Message => Translatable('Need TicketID!'),
+        );
     }
 
     my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
 
     $QueueID = $TicketObject->TicketQueueID( TicketID => $Self->{TicketID} );
     if ( !$QueueID ) {
-        return $LayoutObject->ErrorScreen( Message => 'Need TicketID!' );
+        return $LayoutObject->ErrorScreen(
+            Message => Translatable('Need TicketID!'),
+        );
     }
 
     # check permissions
@@ -56,6 +61,30 @@ sub Run {
 
         # error screen, don't show ticket
         return $LayoutObject->CustomerNoPermission( WithHeader => 'yes' );
+    }
+
+    # get ACL restrictions
+    my %PossibleActions = ( 1 => $Self->{Action} );
+
+    my $ACL = $TicketObject->TicketAcl(
+        Data           => \%PossibleActions,
+        Action         => $Self->{Action},
+        TicketID       => $Self->{TicketID},
+        ReturnType     => 'Action',
+        ReturnSubType  => '-',
+        CustomerUserID => $Self->{UserID},
+    );
+    my %AclAction = $TicketObject->TicketAclActionData();
+
+    # check if ACL restrictions exist
+    if ( $ACL || IsHashRefWithData( \%AclAction ) ) {
+
+        my %AclActionLookup = reverse %AclAction;
+
+        # show error screen if ACL prohibits this action
+        if ( !$AclActionLookup{ $Self->{Action} } ) {
+            return $LayoutObject->NoPermission( WithHeader => 'yes' );
+        }
     }
 
     # get content
@@ -103,8 +132,12 @@ sub Run {
 
     my $PDFObject = $Kernel::OM->Get('Kernel::System::PDF');
 
-    my $PrintedBy = $LayoutObject->{LanguageObject}->Translate('printed by');
-    my $Time      = $LayoutObject->{Time};
+    my $PrintedBy      = $LayoutObject->{LanguageObject}->Translate('printed by');
+    my $DateTimeString = $Kernel::OM->Create('Kernel::System::DateTime')->ToString();
+    my $Time           = $LayoutObject->{LanguageObject}->FormatTimeString(
+        $DateTimeString,
+        'DateFormat',
+    );
     my %Page;
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
@@ -113,7 +146,8 @@ sub Run {
     if ( !$Page{MaxPages} || $Page{MaxPages} < 1 || $Page{MaxPages} > 1000 ) {
         $Page{MaxPages} = 100;
     }
-    my $HeaderRight  = $ConfigObject->Get('Ticket::Hook') . $Ticket{TicketNumber};
+    my $HeaderRight
+        = $ConfigObject->Get('Ticket::Hook') . $ConfigObject->Get('Ticket::HookDivider') . $Ticket{TicketNumber};
     my $HeadlineLeft = $HeaderRight;
     my $Title        = $HeaderRight;
     if ( $Ticket{Title} ) {
@@ -426,7 +460,7 @@ sub _PDFOutputTicketDynamicFields {
 
         my $BackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
 
-        # skip dynamic field if is not desinged for customer interface
+        # skip dynamic field if is not designed for customer interface
         my $IsCustomerInterfaceCapable = $BackendObject->HasBehavior(
             DynamicFieldConfig => $DynamicFieldConfig,
             Behavior           => 'IsCustomerInterfaceCapable',
@@ -724,7 +758,7 @@ sub _PDFOutputArticles {
 
             my $BackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
 
-            # skip the dynamic field if is not desinged for customer interface
+            # skip the dynamic field if is not designed for customer interface
             my $IsCustomerInterfaceCapable = $BackendObject->HasBehavior(
                 DynamicFieldConfig => $DynamicFieldConfig,
                 Behavior           => 'IsCustomerInterfaceCapable',
@@ -819,13 +853,15 @@ sub _PDFOutputArticles {
             my $Lines;
             if ( IsArrayRefWithData( $Article{Body} ) ) {
                 for my $Line ( @{ $Article{Body} } ) {
+                    my $CreateTime
+                        = $LayoutObject->{LanguageObject}->FormatTimeString( $Line->{CreateTime}, 'DateFormat' );
                     if ( $Line->{SystemGenerated} ) {
-                        $Lines .= '[' . $Line->{CreateTime} . '] ' . $Line->{MessageText} . "\n";
+                        $Lines .= '[' . $CreateTime . '] ' . $Line->{MessageText} . "\n";
                     }
                     else {
                         $Lines
                             .= '['
-                            . $Line->{CreateTime} . '] '
+                            . $CreateTime . '] '
                             . $Line->{ChatterName} . ' '
                             . $Line->{MessageText} . "\n";
                     }

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,7 @@ use strict;
 use warnings;
 
 use Kernel::System::VariableCheck qw(:all);
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -39,8 +40,10 @@ sub Run {
     my $ParamObject  = $Kernel::OM->Get('Kernel::System::Web::Request');
     my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
 
+    my $TicketNumber = $ParamObject->GetParam( Param => 'TicketNumber' );
+
     # ticket id lookup
-    if ( !$Self->{TicketID} && $ParamObject->GetParam( Param => 'TicketNumber' ) ) {
+    if ( !$Self->{TicketID} && $TicketNumber ) {
         $Self->{TicketID} = $TicketObject->TicketIDLookup(
             TicketNumber => $ParamObject->GetParam( Param => 'TicketNumber' ),
             UserID       => $Self->{UserID},
@@ -49,10 +52,18 @@ sub Run {
 
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
 
+    # customers should not get to know that whether an ticket exists or not
+    # if a ticket does not exist, show a "no permission" screen
+    if ( $TicketNumber && !$Self->{TicketID} ) {
+        return $LayoutObject->CustomerNoPermission( WithHeader => 'yes' );
+    }
+
     # check needed stuff
     if ( !$Self->{TicketID} ) {
         my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
-        $Output .= $LayoutObject->CustomerError( Message => 'Need TicketID!' );
+        $Output .= $LayoutObject->CustomerError(
+            Message => Translatable('Need TicketID!'),
+        );
         $Output .= $LayoutObject->CustomerFooter();
         return $Output;
     }
@@ -75,10 +86,50 @@ sub Run {
         DynamicFields => 1,
     );
 
-    # strip html and ascii attachments of content
+    # get ACL restrictions
+    my %PossibleActions;
+    my $Counter = 0;
+
+    # get config object
+    my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+
+    # get all registered Actions
+    if ( ref $ConfigObject->Get('CustomerFrontend::Module') eq 'HASH' ) {
+
+        my %Actions = %{ $ConfigObject->Get('CustomerFrontend::Module') };
+
+        # only use those Actions that starts with Customer
+        %PossibleActions = map { ++$Counter => $_ }
+            grep { substr( $_, 0, length 'Customer' ) eq 'Customer' }
+            sort keys %Actions;
+    }
+
+    my $ACL = $TicketObject->TicketAcl(
+        Data           => \%PossibleActions,
+        Action         => $Self->{Action},
+        TicketID       => $Self->{TicketID},
+        ReturnType     => 'Action',
+        ReturnSubType  => '-',
+        CustomerUserID => $Self->{UserID},
+    );
+
+    my %AclAction = %PossibleActions;
+    if ($ACL) {
+        %AclAction = $TicketObject->TicketAclActionData();
+    }
+
+    # check if ACL restrictions exist
+    my %AclActionLookup = reverse %AclAction;
+
+    # show error screen if ACL prohibits this action
+    if ( !$AclActionLookup{ $Self->{Action} } ) {
+        return $LayoutObject->NoPermission( WithHeader => 'yes' );
+    }
+
+    # strip html and ASCII attachments of content
     my $StripPlainBodyAsAttachment = 1;
 
-    # check if rich text is enabled, if not only stip ascii attachments
+    # check if rich text is enabled, if not only strip ASCII attachments
     if ( !$LayoutObject->{BrowserRichText} ) {
         $StripPlainBodyAsAttachment = 2;
     }
@@ -102,14 +153,13 @@ sub Run {
     # get Dynamic fields from ParamObject
     my %DynamicFieldValues;
 
-    my $ConfigObject               = $Kernel::OM->Get('Kernel::Config');
     my $Config                     = $ConfigObject->Get("Ticket::Frontend::$Self->{Action}");
     my $FollowUpDynamicFieldFilter = $Config->{FollowUpDynamicField};
 
     if ( $GetParam{FromChatID} ) {
         if ( !$ConfigObject->Get('ChatEngine::Active') ) {
             return $LayoutObject->FatalError(
-                Message => "Chat is not active.",
+                Message => Translatable('Chat is not active.'),
             );
         }
 
@@ -122,7 +172,7 @@ sub Run {
 
         if ( !%ChatParticipant ) {
             return $LayoutObject->FatalError(
-                Message => "No permission.",
+                Message => Translatable('No permission.'),
             );
         }
     }
@@ -141,7 +191,7 @@ sub Run {
     for my $DynamicFieldConfig ( @{$FollowUpDynamicField} ) {
         next DYNAMICFIELD if !IsHashRefWithData($DynamicFieldConfig);
 
-        # extract the dynamic field value form the web request
+        # extract the dynamic field value from the web request
         $DynamicFieldValues{ $DynamicFieldConfig->{Name} } =
             $BackendObject->EditFieldValueGet(
             DynamicFieldConfig => $DynamicFieldConfig,
@@ -315,8 +365,8 @@ sub Run {
         if ( $FollowUpPossible =~ /(new ticket|reject)/i && $State{TypeName} =~ /^close/i ) {
             my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
             $Output .= $LayoutObject->CustomerWarning(
-                Message => 'Can\'t reopen ticket, not possible in this queue!',
-                Comment => 'Create a new ticket!',
+                Message => Translatable('Can\'t reopen ticket, not possible in this queue!'),
+                Comment => Translatable('Create a new ticket!'),
             );
             $Output .= $LayoutObject->CustomerFooter();
             return $Output;
@@ -455,9 +505,9 @@ sub Run {
                 if ( !IsHashRefWithData($ValidationResult) ) {
                     my $Output = $LayoutObject->CustomerHeader( Title => 'Error' );
                     $Output .= $LayoutObject->CustomerError(
-                        Message =>
-                            "Could not perform validation on field $DynamicFieldConfig->{Label}!",
-                        Comment => 'Please contact your administrator',
+                        Message => $LayoutObject->{LanguageObject}
+                            ->Translate( 'Could not perform validation on field %s!', $DynamicFieldConfig->{Label} ),
+                        Comment => Translatable('Please contact the administrator.'),
                     );
                     $Output .= $LayoutObject->CustomerFooter();
                     return $Output;
@@ -467,7 +517,7 @@ sub Run {
                 if ( $ValidationResult->{ServerError} ) {
                     $Error{ $DynamicFieldConfig->{Name} } = ' ServerError';
 
-                    # make FollowUp visible to correcly show the error
+                    # make FollowUp visible to correctly show the error
                     $GetParam{FollowUpVisible} = 'Visible';
                 }
             }
@@ -831,6 +881,7 @@ sub Run {
         TicketState   => $Ticket{State},
         TicketStateID => $Ticket{StateID},
         %GetParam,
+        AclAction        => \%AclAction,
         DynamicFieldHTML => \%DynamicFieldHTML,
     );
 
@@ -883,6 +934,11 @@ sub _Mask {
 
     my $ParamObject       = $Kernel::OM->Get('Kernel::System::Web::Request');
     my $UploadCacheObject = $Kernel::OM->Get('Kernel::System::Web::UploadCache');
+
+    my %AclActionLookup;
+    if ( $Param{AclAction} ) {
+        %AclActionLookup = reverse %{ $Param{AclAction} };
+    }
 
     $Param{FormID} = $Self->{FormID};
 
@@ -961,9 +1017,17 @@ sub _Mask {
 
     # ticket type
     if ( $ConfigObject->Get('Ticket::Type') && $Config->{AttributesView}->{Type} ) {
+
+        my %Type = $Kernel::OM->Get('Kernel::System::Type')->TypeGet(
+            Name => $Param{Type},
+        );
+
         $LayoutObject->Block(
             Name => 'Type',
-            Data => \%Param,
+            Data => {
+                Valid => $Type{ValidID},
+                %Param,
+                }
         );
     }
 
@@ -1210,7 +1274,7 @@ sub _Mask {
 
     my $BackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
 
-    # reduce the dynamic fields to only the ones that are desinged for customer interface
+    # reduce the dynamic fields to only the ones that are designed for customer interface
     my @CustomerDynamicFields;
     DYNAMICFIELD:
     for my $DynamicFieldConfig ( @{$FollowUpDynamicField} ) {
@@ -1346,7 +1410,7 @@ sub _Mask {
 
                             AVAILABLE_USER:
                             for my $AvailableUser ( sort keys %AvailableUsers ) {
-                                if ( grep( /^$ChatChannelData{Key}$/, @{ $AvailableUsers{$AvailableUser} } ) ) {
+                                if ( grep {/^$ChatChannelData{Key}$/} @{ $AvailableUsers{$AvailableUser} } ) {
                                     $UserAvailable = 1;
                                     last AVAILABLE_USER;
                                 }
@@ -1368,7 +1432,11 @@ sub _Mask {
     }
 
     # print option
-    if ( $ConfigObject->Get('CustomerFrontend::Module')->{CustomerTicketPrint} ) {
+    if (
+        $ConfigObject->Get('CustomerFrontend::Module')->{CustomerTicketPrint}
+        && $AclActionLookup{CustomerTicketPrint}
+        )
+    {
         $LayoutObject->Block(
             Name => 'Print',
             Data => \%Param,
@@ -1542,14 +1610,6 @@ sub _Mask {
                     HTMLResultMode => 1,
                     LinkFeature    => 1,
                 );
-            }
-
-            # security="restricted" may break SSO - disable this feature if requested
-            if ( $ConfigObject->Get('DisableMSIFrameSecurityRestricted') ) {
-                $Param{MSSecurityRestricted} = '';
-            }
-            else {
-                $Param{MSSecurityRestricted} = 'security="restricted"';
             }
 
             if ( !defined $Self->{DoNotShowBrowserLinkMessage} ) {
@@ -1732,7 +1792,7 @@ sub _Mask {
         )
         && (
             ( $FollowUpPossible !~ /(new ticket|reject)/i && $State{TypeName} =~ /^close/i )
-            || $State{TypeName} !~ /^close/i
+            || $State{TypeName} !~ /^close|merged/i
         )
         )
     {
@@ -1741,12 +1801,11 @@ sub _Mask {
             OnlyDynamicFields => 1,
         );
 
-        # create a string with the quoted dynamic field names separated by commas
-        if ( IsArrayRefWithData($DynamicFieldNames) ) {
-            for my $Field ( @{$DynamicFieldNames} ) {
-                $Param{DynamicFieldNamesStrg} .= ", '" . $Field . "'";
-            }
-        }
+        # send data to JS
+        $LayoutObject->AddJSData(
+            Key   => 'DynamicFieldNames',
+            Value => $DynamicFieldNames,
+        );
 
         # check subject
         if ( !$Param{Subject} ) {
@@ -1764,8 +1823,8 @@ sub _Mask {
             $Param{RichTextHeight} = $Config->{RichTextHeight} || 0;
             $Param{RichTextWidth}  = $Config->{RichTextWidth}  || 0;
 
-            $LayoutObject->Block(
-                Name => 'RichText',
+            # set up customer rich text editor
+            $LayoutObject->CustomerSetRichTextParameters(
                 Data => \%Param,
             );
         }

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -25,20 +25,16 @@ our @ObjectDependencies = (
 
 Kernel::System::PDF - pdf lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 Functions for generating PDF files.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=item new()
+Don't use the constructor directly, use the ObjectManager instead:
 
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $PDFObject = $Kernel::OM->Get('Kernel::System::PDF');
 
 Please note that currently you should only create one PDF object per instance of
@@ -62,7 +58,7 @@ sub new {
     return $Self;
 }
 
-=item DocumentNew()
+=head2 DocumentNew()
 
 Create a new PDF Document
 
@@ -100,12 +96,13 @@ sub DocumentNew {
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
 
     # get Product and Version
-    $Self->{Config}->{Project} = $ConfigObject->Get('Product');
-    $Self->{Config}->{Version} = $ConfigObject->Get('Version');
-    my $ProjectVersion = $Self->{Config}->{Project} . ' ' . $Self->{Config}->{Version};
+    my $PDFCreator = '';    # set to empty value if Secure::DisableBanner is active
+    if ( !$Kernel::OM->Get('Kernel::Config')->Get('Secure::DisableBanner') ) {
+        $PDFCreator = $ConfigObject->Get('Product') . ' ' . $ConfigObject->Get('Version');
+    }
 
     # set document title
-    $Self->{Document}->{Title} = $Param{Title} || $ProjectVersion;
+    $Self->{Document}->{Title} = $Param{Title} || $PDFCreator;
 
     # set document encode
     $Self->{Document}->{Encode} = $Param{Encode} || 'utf-8';
@@ -135,7 +132,7 @@ sub DocumentNew {
 
     # set document infos
     $Self->{PDF}->info(
-        'Author'       => $ProjectVersion,
+        'Author'       => $PDFCreator,
         'CreationDate' => "D:"
             . $NowYear
             . $NowMonth
@@ -144,8 +141,8 @@ sub DocumentNew {
             . $NowMin
             . $NowSec
             . "+01'00'",
-        'Creator'  => $ProjectVersion,
-        'Producer' => "OTRS PDF Creator",
+        'Creator'  => $PDFCreator,
+        'Producer' => $PDFCreator,
         'Title'    => $Self->{Document}->{Title},
         'Subject'  => $Self->{Document}->{Title},
     );
@@ -194,7 +191,7 @@ sub DocumentNew {
     return 1;
 }
 
-=item PageBlankNew()
+=head2 PageBlankNew()
 
 Create a new, blank Page
 
@@ -281,7 +278,7 @@ sub PageBlankNew {
     return;
 }
 
-=item PageNew()
+=head2 PageNew()
 
 Create a new Page
 
@@ -554,7 +551,7 @@ sub PageNew {
     return 1;
 }
 
-=item DocumentOutput()
+=head2 DocumentOutput()
 
 Return the PDF as string
 
@@ -587,7 +584,7 @@ sub DocumentOutput {
     return $DocumentString;
 }
 
-=item Table()
+=head2 Table()
 
 Add a table.
 
@@ -843,7 +840,8 @@ sub Table {
                         # save old position
                         my %PositionOld = %Position;
                         if (
-                            $Param{RowData}->[$Row]->{OutputHeight} <= $Position{Y} - $Dim{Bottom}
+                            $Param{RowData}->[$Row]->{OutputHeight}
+                            && $Param{RowData}->[$Row]->{OutputHeight} <= $Position{Y} - $Dim{Bottom}
                             )
                         {
                             for ( $Block{ReturnColumnStart} .. $Block{ReturnColumnStop} ) {
@@ -1051,7 +1049,7 @@ sub Table {
     return %Param;
 }
 
-=item Text()
+=head2 Text()
 
 Output a textline
 
@@ -1234,7 +1232,7 @@ sub Text {
     return %Return;
 }
 
-=item Image()
+=head2 Image()
 
 Output a image
 
@@ -1368,7 +1366,7 @@ sub Image {
     return $Return;
 }
 
-=item HLine()
+=head2 HLine()
 
 Output a horizontal line
 
@@ -1495,7 +1493,7 @@ sub HLine {
     return $Output;
 }
 
-=item PositionSet()
+=head2 PositionSet()
 
 Set new position on current page
 
@@ -1626,7 +1624,7 @@ sub PositionSet {
     return 1;
 }
 
-=item PositionGet()
+=head2 PositionGet()
 
 Get position on current page
 
@@ -1661,7 +1659,7 @@ sub PositionGet {
     return %Position;
 }
 
-=item DimSet()
+=head2 DimSet()
 
 Set active dimension
 
@@ -1699,7 +1697,7 @@ sub DimSet {
     return $Self->{Current}->{Dim};
 }
 
-=item DimGet()
+=head2 DimGet()
 
 Get active dimension (printable or content)
 
@@ -1734,7 +1732,7 @@ sub DimGet {
 
 =begin Internal:
 
-=item _TableCalculate()
+=head2 _TableCalculate()
 
 calculate params of table.
 
@@ -2158,7 +2156,7 @@ sub _TableCalculate {
     return %Param;
 }
 
-=item _TableBlockNextCalculate()
+=head2 _TableBlockNextCalculate()
 
 calculate what block can output next
 
@@ -2282,7 +2280,7 @@ sub _TableBlockNextCalculate {
     return %Return;
 }
 
-=item _TableRowCalculate()
+=head2 _TableRowCalculate()
 
 calculate row of table
 
@@ -2379,7 +2377,7 @@ sub _TableRowCalculate {
     return %Param;
 }
 
-=item _TableCellOutput()
+=head2 _TableCellOutput()
 
 output a cell of a table
 
@@ -2536,7 +2534,7 @@ sub _TableCellOutput {
     return %Return;
 }
 
-=item _TableCellOnCount()
+=head2 _TableCellOnCount()
 
 count all active cells
 
@@ -2596,7 +2594,7 @@ sub _TableCellOnCount {
     return $Return;
 }
 
-=item _TextCalculate()
+=head2 _TextCalculate()
 
 calculate required values of given text
 
@@ -2854,7 +2852,7 @@ sub _TextCalculate {
     return %Return;
 }
 
-=item _StringWidth()
+=head2 _StringWidth()
 
 calculate width of given text
 
@@ -2918,7 +2916,7 @@ sub _StringWidth {
     return $StringWidth;
 }
 
-=item _PrepareText()
+=head2 _PrepareText()
 
 prepare given text for output
 
@@ -2969,7 +2967,7 @@ sub _PrepareText {
     return $Param{Text};
 }
 
-=item _CurPageNumberSet()
+=head2 _CurPageNumberSet()
 
 set number of current page
 
@@ -3022,7 +3020,7 @@ sub _CurPageNumberSet {
     return 1;
 }
 
-=item _CurPageDimSet()
+=head2 _CurPageDimSet()
 
 Set current Page Dimension
 
@@ -3117,7 +3115,7 @@ sub _CurPageDimSet {
     return 1;
 }
 
-=item _CurPageDimGet()
+=head2 _CurPageDimGet()
 
 Get current Page Dimension (Width, Height)
 
@@ -3160,7 +3158,7 @@ sub _CurPageDimGet {
     return %Data;
 }
 
-=item _CurPageDimCheck()
+=head2 _CurPageDimCheck()
 
 Check given X an/or Y if inside the page dimension
 
@@ -3207,7 +3205,7 @@ sub _CurPageDimCheck {
     return $Return;
 }
 
-=item _CurPrintableDimSet()
+=head2 _CurPrintableDimSet()
 
 Set current Printable Dimension
 
@@ -3312,7 +3310,7 @@ sub _CurPrintableDimSet {
     return 1;
 }
 
-=item _CurPrintableDimGet()
+=head2 _CurPrintableDimGet()
 
 Get current Printable Dimension
 
@@ -3359,7 +3357,7 @@ sub _CurPrintableDimGet {
     return %Data;
 }
 
-=item _CurPrintableDimCheck()
+=head2 _CurPrintableDimCheck()
 
 Check given X an/or Y if inside the printable dimension
 
@@ -3414,7 +3412,7 @@ sub _CurPrintableDimCheck {
     return $Return;
 }
 
-=item _CurContentDimSet()
+=head2 _CurContentDimSet()
 
 Set current Content Dimension
 
@@ -3511,7 +3509,7 @@ sub _CurContentDimSet {
     return 1;
 }
 
-=item _CurContentDimGet()
+=head2 _CurContentDimGet()
 
 Get current Content Dimension
 
@@ -3558,7 +3556,7 @@ sub _CurContentDimGet {
     return %Data;
 }
 
-=item _CurContentDimCheck()
+=head2 _CurContentDimCheck()
 
 Check given X an/or Y if inside the content dimension
 
@@ -3606,7 +3604,7 @@ sub _CurContentDimCheck {
     return $Return;
 }
 
-=item _CurPositionSet()
+=head2 _CurPositionSet()
 
 Set current Position
 
@@ -3677,7 +3675,7 @@ sub _CurPositionSet {
     return 1;
 }
 
-=item _CurPositionGet()
+=head2 _CurPositionGet()
 
 Get current Position
 
@@ -3733,8 +3731,6 @@ sub DESTROY {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

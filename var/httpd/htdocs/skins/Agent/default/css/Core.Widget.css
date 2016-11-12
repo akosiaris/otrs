@@ -97,6 +97,14 @@ ul.Tablelike li.Header + li {
     margin: 15px 10px;
 }
 
+.WidgetSimple .WidgetSimple .WidgetSimple {
+    background: #f5f5f5;
+}
+
+.WidgetSimple .WidgetSimple .WidgetSimple h2 {
+    font-size: 12px;
+}
+
 .WidgetSimple > .Header,
 .WidgetSimple.Collapsed.AnimationRunning > .Header {
     padding: 2px 5px 2px 5px;
@@ -460,7 +468,8 @@ ul.WidgetTooltip li a:hover i {
     margin-top: -5px;
 }
 
-.CallForAction, .cke_dialog_footer_buttons a.cke_dialog_ui_button {
+.CallForAction,
+.cke_dialog_footer_buttons a.cke_dialog_ui_button {
     padding: 0px;
     background: #eee;
     border: 1px solid #ccc;
@@ -468,6 +477,11 @@ ul.WidgetTooltip li a:hover i {
     display: inline-block;
     cursor: pointer;
     transition: all ease-in 0.2s;
+}
+
+.CallForAction.Inline {
+    position: relative;
+    top: -1px;
 }
 
 .CallForAction:disabled {
@@ -491,7 +505,8 @@ ul.WidgetTooltip li a:hover i {
     margin-top: 5px;
 }
 
-.ActionList li a.Fullsize, .CallForAction.Fullsize {
+.ActionList li a.Fullsize,
+.CallForAction.Fullsize {
     display: block;
 }
 
@@ -523,7 +538,7 @@ ul.WidgetTooltip li a:hover i {
 
 .CallForAction span,
 .cke_dialog_footer_buttons td a.cke_dialog_ui_button span {
-    height: 12px;
+    min-height: 12px;
     padding: 3px 7px 6px;
     line-height: 14px;
     vertical-align: middle;
@@ -535,6 +550,14 @@ ul.WidgetTooltip li a:hover i {
     text-shadow: 0 1px 0 #FFF;
     cursor: pointer;
     position: relative;
+}
+
+.CallForAction.Inline span {
+    padding: 2px 7px 4px 7px;
+}
+
+.CallForAction.Fullsize span {
+    padding: 3px 20px 5px 20px;
 }
 
 .CallForAction:disabled span {
@@ -832,6 +855,57 @@ input.FilterBox {
 }
 
 /**
+ * @subsection      Widget messages
+ */
+
+.Content .WidgetMessage {
+    background: #eee;
+    margin: 10px -8px;
+    padding: 5px 20px;
+    font-size: 11px;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    color: #000;
+}
+
+.SidebarColumn .Content .WidgetMessage {
+    margin: 5px -8px;
+    padding: 5px 8px;
+}
+
+.Content .WidgetMessage.Bottom {
+    margin-bottom: -10px;
+}
+
+.Content .WidgetMessage.Top {
+    margin-top: -8px;
+}
+
+.Content .WidgetMessage.Error {
+    background: #F25C5C;
+    color: #fff;
+    border-color: #D14545;
+}
+
+.Content .WidgetMessage.Warning {
+    background: #F7AE40;
+    border-color: #D18F2B;
+}
+
+.Content .WidgetMessage.Success {
+    background: #6EB22A;
+    color: #fff;
+    border-color: #52891B;
+}
+
+.Content .WidgetMessage.Notice {
+    background: #2A61AF;
+    color: #fff;
+    border-color: #15468C;
+}
+
+
+/**
  * @subsection      Icon colors
  */
 
@@ -845,6 +919,55 @@ input.FilterBox {
 .CallForAction span i.fa-download,
 .CallForAction span i.fa-upload {
     color: #2D6F9E;
+}
+
+/**
+ * @subsection      Chat icons
+ */
+
+.UserChatIcons {
+    float: right;
+}
+
+.UserChatIcons.Block {
+    float: none;
+    margin-top: 2px;
+}
+
+.UserChatIcons i {
+    color: #999;
+    margin-right: 3px;
+}
+
+.UserChatIcons .Unavailable i,
+.UserChatIcons .Unsupported i {
+    opacity: 0.4;
+}
+
+.UserStatusIcon {
+    cursor: default;
+    margin-right: 3px;
+}
+
+.UserStatusIcon.Inline {
+    margin-right: 0;
+}
+
+.UserStatusIcon.Active i {
+    color: #0a0;
+}
+
+.UserStatusIcon.Offline i {
+    color: #000;
+}
+
+.UserStatusIcon.Unavailable i {
+    color: #d00;
+    opacity: 1;
+}
+
+.UserStatusIcon.Away i {
+    color: #fb0;
 }
 
 } /* end @media */

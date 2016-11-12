@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -14,9 +14,16 @@ use vars (qw($Self));
 
 use Kernel::System::VariableCheck qw(:all);
 
-# get needed objects
+# get config object
 my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
-my $HelperObject = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
+
+# get helper object
+$Kernel::OM->ObjectParamAdd(
+    'Kernel::System::UnitTest::Helper' => {
+        RestoreDatabase => 1,
+    },
+);
+my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
 $ConfigObject->Set(
     Key   => 'CustomerGroupAlwaysGroups',
@@ -32,7 +39,7 @@ my $CustomerGroupObject = $Kernel::OM->Get('Kernel::System::CustomerGroup');
 my $CustomerUserObject  = $Kernel::OM->Get('Kernel::System::CustomerUser');
 my $GroupObject         = $Kernel::OM->Get('Kernel::System::Group');
 
-my $RandomID = $HelperObject->GetRandomID();
+my $RandomID = $Helper->GetRandomID();
 my $UserID   = 1;
 my $UID      = $RandomID;
 my $GID1     = 1;
@@ -131,7 +138,6 @@ my @Tests = (
         },
         Success => 1,
     },
-
 );
 
 for my $Test (@Tests) {
@@ -265,7 +271,7 @@ my $ResetMembership = sub {
     }
 };
 
-# reset memberchip
+# reset membership
 $ResetMembership->(
     AlwaysGroups => $ConfigObject->Get('CustomerGroupAlwaysGroups'),
     GID          => $GID1,
@@ -277,7 +283,7 @@ $ConfigObject->Set(
     Value => [ $GroupObject->GroupLookup( GroupID => $GID1 ) ],
 );
 
-# reset memberchip with AlwaysGroups
+# reset membership with AlwaysGroups
 $ResetMembership->(
     AlwaysGroups => $ConfigObject->Get('CustomerGroupAlwaysGroups'),
     GID          => $GID1,
@@ -289,7 +295,7 @@ $ConfigObject->Set(
     Value => [],
 );
 
-# reset memberchip
+# reset membership
 $ResetMembership->(
     AlwaysGroups => $ConfigObject->Get('CustomerGroupAlwaysGroups'),
     GID          => $GID1,
@@ -339,7 +345,7 @@ $ResetMembership->(
         Config => {
             Type    => 'ro',
             Result  => 'Name',
-            UserID  => 'Notexistent' . $RandomID,
+            UserID  => 'Nonexistent' . $RandomID,
             GroupID => undef,
         },
         ExpectedResult => [],
@@ -350,7 +356,7 @@ $ResetMembership->(
         Config => {
             Type    => 'ro',
             Result  => 'HASH',
-            UserID  => 'Notexistent' . $RandomID,
+            UserID  => 'Nonexistent' . $RandomID,
             GroupID => undef,
         },
         ExpectedResult => {},
@@ -362,7 +368,7 @@ $ResetMembership->(
             Type    => 'ro',
             Result  => 'ID',
             UserID  => undef,
-            GroupID => 9999,
+            GroupID => 99999999,
         },
         ExpectedResult => [],
         Success        => 1,
@@ -373,7 +379,7 @@ $ResetMembership->(
             Type    => 'ro',
             Result  => 'HASH',
             UserID  => undef,
-            GroupID => 9999,
+            GroupID => 99999999,
         },
         ExpectedResult => {},
         Success        => 1,
@@ -524,7 +530,7 @@ $ResetMembership->(
         ResetMembership => 1,
     },
     {
-        Name   => 'Mutiple With UserID - Result Name',
+        Name   => 'Multiple With UserID - Result Name',
         Config => {
             Type    => 'ro',
             Result  => 'Name',
@@ -806,7 +812,7 @@ for my $Test (@Tests) {
     {
         Name   => 'Wrong Group',
         Config => {
-            Group   => 'NonExistent' . $RandomID,
+            Group   => 'Nonexistent' . $RandomID,
             GroupID => undef,
         },
         ExpectedResults => '',
@@ -816,7 +822,7 @@ for my $Test (@Tests) {
         Name   => 'Wrong GroupID',
         Config => {
             Group   => undef,
-            GroupID => 'Notexistent' . $RandomID,
+            GroupID => 99999999,
         },
         ExpectedResults => '',
         Success         => 1,
@@ -861,5 +867,140 @@ for my $Test (@Tests) {
         );
     }
 }
+
+# Disable email checks
+$ConfigObject->Set(
+    Key   => 'CheckEmailAddresses',
+    Value => 0,
+);
+$ConfigObject->Set(
+    Key   => 'CheckMXRecord',
+    Value => 0,
+);
+
+# create 2 customer users
+my $CustomerUser1 = $CustomerUserObject->CustomerUserAdd(
+    Source         => 'CustomerUser',
+    UserFirstname  => 'John 1',
+    UserLastname   => 'Doe',
+    UserCustomerID => 'jdoe1',
+    UserLogin      => 'jdoe1',
+    UserEmail      => 'jdoe1@example.com',
+    ValidID        => 1,
+    UserID         => 1,
+);
+$Self->True(
+    $CustomerUser1,
+    "Customer user #1 created."
+);
+my $CustomerUser2 = $CustomerUserObject->CustomerUserAdd(
+    Source         => 'CustomerUser',
+    UserFirstname  => 'John 2',
+    UserLastname   => 'Doe',
+    UserCustomerID => 'jdoe2',
+    UserLogin      => 'jdoe2',
+    UserEmail      => 'jdoe2@example.com',
+    ValidID        => 1,
+    UserID         => 1,
+);
+$Self->True(
+    $CustomerUser2,
+    "Customer user #2 created."
+);
+my $GroupID2 = $GroupObject->GroupAdd(
+    Name    => 'Test_customer_group_#1',
+    ValidID => 1,
+    UserID  => 1,
+);
+$Self->True(
+    $GroupID2,
+    "Customer Group created."
+);
+my $SuccessGroupMemberAdd1 = $CustomerGroupObject->GroupMemberAdd(
+    GID        => $GroupID2,
+    UID        => $CustomerUser1,
+    Permission => {
+        ro        => 1,
+        move_into => 1,
+        create    => 1,
+        owner     => 1,
+        priority  => 0,
+        rw        => 0,
+    },
+    UserID => 1,
+);
+$Self->True(
+    $SuccessGroupMemberAdd1,
+    "Customer #1 added to the group."
+);
+my $SuccessGroupMemberAdd2 = $CustomerGroupObject->GroupMemberAdd(
+    GID        => $GroupID2,
+    UID        => $CustomerUser2,
+    Permission => {
+        ro        => 1,
+        move_into => 1,
+        create    => 1,
+        owner     => 1,
+        priority  => 0,
+        rw        => 0,
+    },
+    UserID => 1,
+);
+$Self->True(
+    $SuccessGroupMemberAdd2,
+    "Customer #2 added to the group."
+);
+
+# First get members while both users are Valid
+my @Members1 = $CustomerGroupObject->GroupMemberList(
+    GroupID => $GroupID2,
+    Result  => 'ID',
+    Type    => 'ro',
+);
+
+@Members1 = sort { $a cmp $b } @Members1;
+
+$Self->IsDeeply(
+    \@Members1,
+    [
+        'jdoe1',
+        'jdoe2'
+    ],
+    "GroupMemberList() - 2 Customer users."
+);
+
+# set 2nd user to invalid state
+my $CustomerUserInvalid = $CustomerUserObject->CustomerUserUpdate(
+    Source         => 'CustomerUser',
+    ID             => $CustomerUser2,
+    UserCustomerID => $CustomerUser2,
+    UserLogin      => 'jdoe2',               # new user login
+    UserFirstname  => 'John 2',
+    UserLastname   => 'Doe',
+    UserEmail      => 'jdoe2@example.com',
+    ValidID        => 2,
+    UserID         => 1,
+);
+$Self->True(
+    $CustomerUserInvalid,
+    "Set 2nd Customer user to invalid",
+);
+
+# Get group members again
+my @Members2 = $CustomerGroupObject->GroupMemberList(
+    GroupID => $GroupID2,
+    Result  => 'ID',
+    Type    => 'ro',
+);
+
+$Self->IsDeeply(
+    \@Members2,
+    [
+        'jdoe1',
+    ],
+    "GroupMemberList() - 2 Customer users."
+);
+
+# cleanup is done by RestoreDatabase
 
 1;

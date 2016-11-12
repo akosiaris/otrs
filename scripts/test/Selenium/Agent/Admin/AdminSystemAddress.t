@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -15,13 +15,38 @@ use vars (qw($Self));
 # get selenium object
 my $Selenium = $Kernel::OM->Get('Kernel::System::UnitTest::Selenium');
 
+my $CheckBreadcrumb = sub {
+
+    my %Param = @_;
+
+    my $BreadcrumbText = $Param{BreadcrumbText} || '';
+    my $Count = 1;
+
+    for my $BreadcrumbText ( 'System Email Addresses Management', $BreadcrumbText ) {
+        $Self->Is(
+            $Selenium->execute_script("return \$('.BreadCrumb li:eq($Count)').text().trim()"),
+            $BreadcrumbText,
+            "Breadcrumb text '$BreadcrumbText' is found on screen"
+        );
+
+        $Count++;
+    }
+};
+
 $Selenium->RunTest(
     sub {
 
         # get helper object
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        # create and log in test user
+        # disable check email address
+        $Helper->ConfigSettingChange(
+            Valid => 1,
+            Key   => 'CheckEmailAddresses',
+            Value => 0,
+        );
+
+        # create test user and login
         my $TestUserLogin = $Helper->TestUserCreate(
             Groups => ['admin'],
         ) || die "Did not get test user";
@@ -49,21 +74,30 @@ $Selenium->RunTest(
             UserID          => $UserID,
             Comment         => 'Selenium Test Queue',
         );
+        $Self->True(
+            $QueueID,
+            "Created Queue - $QueueRandomID",
+        );
 
-        # get config object
-        my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+        # get script alias
+        my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
 
         # navigate to AdminSystemAddress screen
-        my $ScriptAlias = $ConfigObject->Get('ScriptAlias');
-        $Selenium->get("${ScriptAlias}index.pl?Action=AdminSystemAddress");
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AdminSystemAddress");
 
         # check overview AdminSystemAddress screen
         $Selenium->find_element( "table",             'css' );
         $Selenium->find_element( "table thead tr th", 'css' );
         $Selenium->find_element( "table tbody tr td", 'css' );
 
-        # click 'add system address'
-        $Selenium->find_element("//a[contains(\@href, \'Action=AdminSystemAddress;Subaction=Add')]")->click();
+        # check breadcrumb on Overview screen
+        $Self->True(
+            $Selenium->find_element( '.BreadCrumb', 'css' ),
+            "Breadcrumb is found on Overview screen.",
+        );
+
+        # click 'Add system address'
+        $Selenium->find_element("//a[contains(\@href, \'Action=AdminSystemAddress;Subaction=Add')]")->VerifiedClick();
 
         # check add new SystemAddress screen
         for my $ID (
@@ -75,9 +109,12 @@ $Selenium->RunTest(
             $Element->is_displayed();
         }
 
+        # check breadcrumb on Add screen
+        $CheckBreadcrumb->( BreadcrumbText => 'Add System Email Address' );
+
         # check client side validation
         $Selenium->find_element( "#Name", 'css' )->clear();
-        $Selenium->find_element( "#Name", 'css' )->submit();
+        $Selenium->find_element( "#Name", 'css' )->VerifiedSubmit();
         $Self->Is(
             $Selenium->execute_script(
                 "return \$('#Name').hasClass('Error')"
@@ -94,10 +131,7 @@ $Selenium->RunTest(
         $Selenium->find_element( "#Realname", 'css' )->send_keys($SysAddRandom);
         $Selenium->execute_script("\$('#QueueID').val('$QueueID').trigger('redraw.InputField').trigger('change');");
         $Selenium->find_element( "#Comment", 'css' )->send_keys($SysAddComment);
-        $Selenium->find_element( "#Name",    'css' )->submit();
-
-        # wait for SystemAddress create
-        $Selenium->WaitFor( JavaScript => "return typeof(\$) === 'function' && \$('.MasterAction').length" );
+        $Selenium->find_element( "#Name",    'css' )->VerifiedSubmit();
 
         # check for created test SystemAddress
         $Self->True(
@@ -106,7 +140,7 @@ $Selenium->RunTest(
         );
 
         # go to the new test SystemAddress and check values
-        $Selenium->find_element( $SysAddRandom, 'link_text' )->click();
+        $Selenium->find_element( $SysAddRandom, 'link_text' )->VerifiedClick();
         $Self->Is(
             $Selenium->find_element( '#Name', 'css' )->get_value(),
             $SysAddRandom,
@@ -133,14 +167,14 @@ $Selenium->RunTest(
             "#Comment stored value",
         );
 
+        # check breadcrumb on Edit screen
+        $CheckBreadcrumb->( BreadcrumbText => 'Edit System Email Address: ' . $SysAddRandom );
+
         # edit test SystemAddress and set it to invalid
         $Selenium->find_element( "#Realname", 'css' )->send_keys(" Edited");
         $Selenium->execute_script("\$('#ValidID').val('2').trigger('redraw.InputField').trigger('change');");
         $Selenium->find_element( "#Comment", 'css' )->clear();
-        $Selenium->find_element( "#Name",    'css' )->submit();
-
-        # wait for SystemAddress create
-        $Selenium->WaitFor( JavaScript => "return typeof(\$) === 'function' && \$('.MasterAction').length" );
+        $Selenium->find_element( "#Name",    'css' )->VerifiedSubmit();
 
         # check class of invalid SystemAddress in the overview table
         $Self->True(
@@ -151,7 +185,7 @@ $Selenium->RunTest(
         );
 
         # check edited test SystemAddress values
-        $Selenium->find_element( $SysAddRandom, 'link_text' )->click();
+        $Selenium->find_element( $SysAddRandom, 'link_text' )->VerifiedClick();
         $Self->Is(
             $Selenium->find_element( '#Realname', 'css' )->get_value(),
             $SysAddRandom . " Edited",

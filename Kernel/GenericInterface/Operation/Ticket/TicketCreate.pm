@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,7 +11,7 @@ package Kernel::GenericInterface::Operation::Ticket::TicketCreate;
 use strict;
 use warnings;
 
-use Kernel::System::VariableCheck qw(IsArrayRefWithData IsHashRefWithData IsStringWithData);
+use Kernel::System::VariableCheck qw(IsArrayRefWithData IsHashRefWithData IsString IsStringWithData);
 
 use base qw(
     Kernel::GenericInterface::Operation::Common
@@ -24,15 +24,9 @@ our $ObjectManagerDisabled = 1;
 
 Kernel::GenericInterface::Operation::Ticket::TicketCreate - GenericInterface Ticket TicketCreate Operation backend
 
-=head1 SYNOPSIS
-
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 usually, you want to create an instance of this
 by using Kernel::GenericInterface::Operation->new();
@@ -62,7 +56,7 @@ sub new {
     return $Self;
 }
 
-=item Run()
+=head2 Run()
 
 perform TicketCreate Operation. This will return the created ticket number.
 
@@ -479,7 +473,7 @@ sub Run {
 
 =begin Internal:
 
-=item _CheckTicket()
+=head2 _CheckTicket()
 
 checks if the given ticket parameters are valid.
 
@@ -663,7 +657,7 @@ sub _CheckTicket {
         }
 }
 
-=item _CheckArticle()
+=head2 _CheckArticle()
 
 checks if the given article parameter is valid.
 
@@ -941,7 +935,7 @@ sub _CheckArticle {
     };
 }
 
-=item _CheckDynamicField()
+=head2 _CheckDynamicField()
 
 checks if the given dynamic field parameter is valid.
 
@@ -969,7 +963,11 @@ sub _CheckDynamicField {
 
     # check DynamicField item internally
     for my $Needed (qw(Name Value)) {
-        if ( !defined $DynamicField->{$Needed} || !IsStringWithData( $DynamicField->{$Needed} ) ) {
+        if (
+            !defined $DynamicField->{$Needed}
+            || ( !IsString( $DynamicField->{$Needed} ) && ref $DynamicField->{$Needed} ne 'ARRAY' )
+            )
+        {
             return {
                 ErrorCode    => 'TicketCreate.MissingParameter',
                 ErrorMessage => "TicketCreate: DynamicField->$Needed  parameter is missing!",
@@ -999,7 +997,7 @@ sub _CheckDynamicField {
     };
 }
 
-=item _CheckAttachment()
+=head2 _CheckAttachment()
 
 checks if the given attachment parameter is valid.
 
@@ -1077,7 +1075,7 @@ sub _CheckAttachment {
     };
 }
 
-=item _TicketCreate()
+=head2 _TicketCreate()
 
 creates a ticket with its article and sets dynamic fields and attachments if specified.
 
@@ -1444,7 +1442,7 @@ sub _TicketCreate {
     my %TicketData = $TicketObject->TicketGet(
         TicketID      => $TicketID,
         DynamicFields => 0,
-        UserID        => $Param{UserId},
+        UserID        => $Param{UserID},
     );
 
     if ( !IsHashRefWithData( \%TicketData ) ) {
@@ -1468,8 +1466,6 @@ sub _TicketCreate {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

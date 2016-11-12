@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -13,10 +13,14 @@ use warnings;
 
 use base qw(Kernel::System::EventHandler);
 
+use Kernel::System::VariableCheck qw(:all);
+
 our @ObjectDependencies = (
     'Kernel::Config',
     'Kernel::System::CustomerCompany',
     'Kernel::System::DB',
+    'Kernel::System::DynamicField',
+    'Kernel::System::DynamicField::Backend',
     'Kernel::System::Log',
     'Kernel::System::Main',
 );
@@ -25,22 +29,16 @@ our @ObjectDependencies = (
 
 Kernel::System::CustomerUser - customer user lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All customer user functions. E. g. to add and update customer users.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $CustomerUserObject = $Kernel::OM->Get('Kernel::System::CustomerUser');
 
 =cut
@@ -76,6 +74,7 @@ sub new {
         if ( !$MainObject->Require($GenericModule) ) {
             $MainObject->Die("Can't load backend module $GenericModule! $@");
         }
+
         $Self->{"CustomerUser$Count"} = $GenericModule->new(
             Count             => $Count,
             PreferencesObject => $Self->{PreferencesObject},
@@ -91,7 +90,7 @@ sub new {
     return $Self;
 }
 
-=item CustomerSourceList()
+=head2 CustomerSourceList()
 
 return customer source list
 
@@ -127,32 +126,33 @@ sub CustomerSourceList {
     return %Data;
 }
 
-=item CustomerSearch()
+=head2 CustomerSearch()
 
 to search users
 
     # text search
     my %List = $CustomerUserObject->CustomerSearch(
         Search => '*some*', # also 'hans+huber' possible
-        Valid  => 1, # not required, default 1
+        Valid  => 1,        # (optional) default 1
+        Limit  => 100,      # (optional) overrides limit of the config
     );
 
     # username search
     my %List = $CustomerUserObject->CustomerSearch(
         UserLogin => '*some*',
-        Valid     => 1, # not required, default 1
+        Valid     => 1,         # (optional) default 1
     );
 
     # email search
     my %List = $CustomerUserObject->CustomerSearch(
         PostMasterSearch => 'email@example.com',
-        Valid            => 1, # not required, default 1
+        Valid            => 1,                    # (optional) default 1
     );
 
     # search by CustomerID
     my %List = $CustomerUserObject->CustomerSearch(
         CustomerID       => 'CustomerID123',
-        Valid            => 1, # not required, default 1
+        Valid            => 1,                # (optional) default 1
     );
 
 =cut
@@ -166,11 +166,116 @@ sub CustomerSearch {
         $Param{Search} =~ s/\s+$//;
     }
 
+    # Get dynamic fiekd object.
+    my $DynamicFieldObject = $Kernel::OM->Get('Kernel::System::DynamicField');
+
+    my $DynamicFieldConfigs = $DynamicFieldObject->DynamicFieldListGet(
+        ObjectType => 'CustomerUser',
+        Valid      => 1,
+    );
+
+    my %DynamicFieldLookup = map { $_->{Name} => $_ } @{$DynamicFieldConfigs};
+
+    # Get dynamic field backend object.
+    my $DynamicFieldBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
+
     my %Data;
     SOURCE:
     for my $Count ( '', 1 .. 10 ) {
 
         next SOURCE if !$Self->{"CustomerUser$Count"};
+
+        # search dynamic field values, if configured
+        my $Map = $Self->{"CustomerUser$Count"}->{CustomerUserMap}->{Map};
+        if ( IsArrayRefWithData($Map) ) {
+
+            # fetch dynamic field names that are configured in Map
+            # only these will be considered for any other search config
+            # [ 'DynamicField_Name_X', undef, 'Name_X', 0, 0, 'dynamic_field', undef, 0, undef, undef, ],
+            my %DynamicFieldNames = map { $_->[2] => 1 } grep { $_->[5] eq 'dynamic_field' } @{$Map};
+
+            if ( IsHashRefWithData( \%DynamicFieldNames ) ) {
+                my $FoundDynamicFieldObjectIDs;
+                my $SearchFields;
+                my $SearchParam;
+
+                # check which of the dynamic fields configured in Map are also
+                # configured in SearchFields
+
+                # param Search
+                if ( defined $Param{Search} && length $Param{Search} ) {
+                    $SearchFields = $Self->{"CustomerUser$Count"}->{CustomerUserMap}->{CustomerUserSearchFields};
+                    $SearchParam  = $Param{Search};
+                }
+
+                # param PostMasterSearch
+                elsif ( defined $Param{PostMasterSearch} && length $Param{PostMasterSearch} ) {
+                    $SearchFields
+                        = $Self->{"CustomerUser$Count"}->{CustomerUserMap}->{CustomerUserPostMasterSearchFields};
+                    $SearchParam = $Param{PostMasterSearch};
+                }
+
+                # search dynamic field values
+                if ( IsArrayRefWithData($SearchFields) ) {
+                    my @SearchDynamicFieldNames = grep { exists $DynamicFieldNames{$_} } @{$SearchFields};
+                    my @SearchDynamicFieldIDs;
+
+                    my %FoundDynamicFieldObjectIDs;
+                    FIELDNAME:
+                    for my $FieldName (@SearchDynamicFieldNames) {
+
+                        my $DynamicFieldConfig = $DynamicFieldLookup{$FieldName};
+
+                        next FIELDNAME if !IsHashRefWithData($DynamicFieldConfig);
+
+                        my $DynamicFieldValues = $DynamicFieldBackendObject->ValueSearch(
+                            DynamicFieldConfig => $DynamicFieldConfig,
+                            Search             => $SearchParam,
+                        );
+
+                        if ( IsArrayRefWithData($DynamicFieldValues) ) {
+                            for my $DynamicFieldValue ( @{$DynamicFieldValues} ) {
+                                $FoundDynamicFieldObjectIDs{ $DynamicFieldValue->{ObjectID} } = 1;
+                            }
+                        }
+                    }
+
+                    $FoundDynamicFieldObjectIDs = [ keys %FoundDynamicFieldObjectIDs ];
+                }
+
+                # execute backend search for found object IDs
+                # this data is being merged with the following CustomerSearch call
+                if ( IsArrayRefWithData($FoundDynamicFieldObjectIDs) ) {
+
+                    my $ObjectNames = $DynamicFieldObject->ObjectMappingGet(
+                        ObjectID   => $FoundDynamicFieldObjectIDs,
+                        ObjectType => 'CustomerUser',
+                    );
+
+                    OBJECTNAME:
+                    for my $ObjectName ( values %{$ObjectNames} ) {
+                        next OBJECTNAME if exists $Data{$ObjectName};
+
+                        my %SearchParam = %Param;
+                        delete $SearchParam{Search};
+                        delete $SearchParam{PostMasterSearch};
+
+                        $SearchParam{UserLogin} = $ObjectName;
+
+                        my %SubData = $Self->{"CustomerUser$Count"}->CustomerSearch(%SearchParam);
+
+                        # UserLogin search does a wild-card search, but in this case only the
+                        # exact matching user login is relevant
+                        if ( IsHashRefWithData( \%SubData ) && exists $SubData{$ObjectName} ) {
+                            %Data = (
+                                $ObjectName => $SubData{$ObjectName},
+                                %Data
+                            );
+                        }
+                    }
+                }
+            }
+        }
 
         # get customer search result of backend and merge it
         my %SubData = $Self->{"CustomerUser$Count"}->CustomerSearch(%Param);
@@ -179,33 +284,7 @@ sub CustomerSearch {
     return %Data;
 }
 
-=item CustomerUserList()
-
-return a hash with all users (depreciated)
-
-    my %List = $CustomerUserObject->CustomerUserList(
-        Valid => 1, # not required
-    );
-
-=cut
-
-sub CustomerUserList {
-    my ( $Self, %Param ) = @_;
-
-    my %Data;
-    SOURCE:
-    for my $Count ( '', 1 .. 10 ) {
-
-        next SOURCE if !$Self->{"CustomerUser$Count"};
-
-        # get customer list result of backend and merge it
-        my %SubData = $Self->{"CustomerUser$Count"}->CustomerUserList(%Param);
-        %Data = ( %Data, %SubData );
-    }
-    return %Data;
-}
-
-=item CustomerIDList()
+=head2 CustomerIDList()
 
 return a list of with all known unique CustomerIDs of the registered customers users (no SearchTerm),
 or a filtered list where the CustomerIDs must contain a search term.
@@ -238,7 +317,7 @@ sub CustomerIDList {
     return @Data;
 }
 
-=item CustomerName()
+=head2 CustomerName()
 
 get customer user name
 
@@ -265,7 +344,7 @@ sub CustomerName {
     return;
 }
 
-=item CustomerIDs()
+=head2 CustomerIDs()
 
 get customer user customer ids
 
@@ -292,7 +371,7 @@ sub CustomerIDs {
     return;
 }
 
-=item CustomerUserDataGet()
+=head2 CustomerUserDataGet()
 
 get user data (UserLogin, UserFirstname, UserLastname, UserEmail, ...)
 
@@ -307,9 +386,18 @@ sub CustomerUserDataGet {
 
     return if !$Param{User};
 
-    # get needed objects
-    my $ConfigObject          = $Kernel::OM->Get('Kernel::Config');
-    my $CustomerCompanyObject = $Kernel::OM->Get('Kernel::System::CustomerCompany');
+    # fetch dynamic field configurations for CustomerUser.
+    my $DynamicFieldConfigs = $Kernel::OM->Get('Kernel::System::DynamicField')->DynamicFieldListGet(
+        ObjectType => 'CustomerUser',
+        Valid      => 1,
+    );
+
+    my %DynamicFieldLookup = map { $_->{Name} => $_ } @{$DynamicFieldConfigs};
+
+    # Get needed objects.
+    my $ConfigObject              = $Kernel::OM->Get('Kernel::Config');
+    my $CustomerCompanyObject     = $Kernel::OM->Get('Kernel::System::CustomerCompany');
+    my $DynamicFieldBackendObject = $Kernel::OM->Get('Kernel::System::DynamicField::Backend');
 
     SOURCE:
     for my $Count ( '', 1 .. 10 ) {
@@ -347,6 +435,22 @@ sub CustomerUserDataGet {
             $Company{CustomerCompanyValidID} = $Company{ValidID};
         }
 
+        # fetch dynamic field values
+        if ( IsArrayRefWithData( $Self->{"CustomerUser$Count"}->{CustomerUserMap}->{Map} ) ) {
+            CUSTOMERUSERFIELD:
+            for my $CustomerUserField ( @{ $Self->{"CustomerUser$Count"}->{CustomerUserMap}->{Map} } ) {
+                next CUSTOMERUSERFIELD if $CustomerUserField->[5] ne 'dynamic_field';
+                next CUSTOMERUSERFIELD if !$DynamicFieldLookup{ $CustomerUserField->[2] };
+
+                my $Value = $DynamicFieldBackendObject->ValueGet(
+                    DynamicFieldConfig => $DynamicFieldLookup{ $CustomerUserField->[2] },
+                    ObjectName         => $Customer{UserID},
+                );
+
+                $Customer{ $CustomerUserField->[0] } = $Value;
+            }
+        }
+
         # return customer data
         return (
             %Company,
@@ -360,7 +464,7 @@ sub CustomerUserDataGet {
     return;
 }
 
-=item CustomerUserAdd()
+=head2 CustomerUserAdd()
 
 to add new customer users
 
@@ -398,6 +502,7 @@ sub CustomerUserAdd {
         }
     }
 
+    # store customer user data
     my $Result = $Self->{ $Param{Source} }->CustomerUserAdd(%Param);
     return if !$Result;
 
@@ -415,7 +520,7 @@ sub CustomerUserAdd {
 
 }
 
-=item CustomerUserUpdate()
+=head2 CustomerUserUpdate()
 
 to update customer users
 
@@ -466,6 +571,7 @@ sub CustomerUserUpdate {
         );
         return;
     }
+
     my $Result = $Self->{ $User{Source} }->CustomerUserUpdate(%Param);
     return if !$Result;
 
@@ -481,10 +587,9 @@ sub CustomerUserUpdate {
     );
 
     return $Result;
-
 }
 
-=item SetPassword()
+=head2 SetPassword()
 
 to set customer users passwords
 
@@ -519,7 +624,7 @@ sub SetPassword {
     return $Self->{ $User{Source} }->SetPassword(%Param);
 }
 
-=item GenerateRandomPassword()
+=head2 GenerateRandomPassword()
 
 generate a random password
 
@@ -539,7 +644,7 @@ sub GenerateRandomPassword {
     return $Self->{CustomerUser}->GenerateRandomPassword(%Param);
 }
 
-=item SetPreferences()
+=head2 SetPreferences()
 
 set customer user preferences
 
@@ -582,7 +687,7 @@ sub SetPreferences {
     return $Self->{PreferencesObject}->SetPreferences(%Param);
 }
 
-=item GetPreferences()
+=head2 GetPreferences()
 
 get customer user preferences
 
@@ -623,7 +728,7 @@ sub GetPreferences {
     return $Self->{PreferencesObject}->GetPreferences(%Param);
 }
 
-=item SearchPreferences()
+=head2 SearchPreferences()
 
 search in user preferences
 
@@ -660,7 +765,7 @@ sub SearchPreferences {
     return %Data;
 }
 
-=item TokenGenerate()
+=head2 TokenGenerate()
 
 generate a random token
 
@@ -696,7 +801,7 @@ sub TokenGenerate {
     return $Token;
 }
 
-=item TokenCheck()
+=head2 TokenCheck()
 
 check password token
 
@@ -738,6 +843,31 @@ sub TokenCheck {
     return 1;
 }
 
+=head2 CustomerUserCacheClear()
+
+clear cache of customer user data
+
+    $CustomerUserObject->CustomerUserCacheClear(
+        UserLogin => 'mhuber',
+    );
+
+=cut
+
+sub CustomerUserCacheClear {
+    my ( $Self, %Param ) = @_;
+
+    SOURCE:
+    for my $Count ( '', 1 .. 10 ) {
+
+        next SOURCE if !$Self->{"CustomerUser$Count"};
+        $Self->{"CustomerUser$Count"}->_CustomerUserCacheClear(
+            UserLogin => $Param{UserLogin},
+        );
+    }
+
+    return 1;
+}
+
 sub DESTROY {
     my $Self = shift;
 
@@ -748,8 +878,6 @@ sub DESTROY {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

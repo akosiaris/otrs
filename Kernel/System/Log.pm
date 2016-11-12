@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -26,17 +26,13 @@ our @ObjectDependencies = (
 
 Kernel::System::Log - global log interface
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All log functions.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create a log object. Do not use it directly, instead use:
 
@@ -79,6 +75,11 @@ sub new {
     $Self->{LogPrefix} = $Param{LogPrefix} || '?LogPrefix?';
     $Self->{LogPrefix} .= '-' . $SystemID;
 
+    # configured log level (debug by default)
+    $Self->{MinimumLevel}    = $ConfigObject->Get('MinimumLogLevel') || 'debug';
+    $Self->{MinimumLevel}    = lc $Self->{MinimumLevel};
+    $Self->{MinimumLevelNum} = $LogLevel{ $Self->{MinimumLevel} };
+
     # load log backend
     my $GenericModule = $ConfigObject->Get('LogModule') || 'Kernel::System::Log::SysLog';
     if ( !eval "require $GenericModule" ) {    ## no critic
@@ -97,10 +98,6 @@ sub new {
     $Self->{IPCKey}  = '444423' . $SystemID;
     $Self->{IPCSize} = $ConfigObject->Get('LogSystemCacheSize') || 32 * 1024;
 
-    $Self->{MinimumLevel}    = $ConfigObject->Get('MinimumLogLevel') || 'debug';
-    $Self->{MinimumLevel}    = lc $Self->{MinimumLevel};
-    $Self->{MinimumLevelNum} = $LogLevel{ $Self->{MinimumLevel} };
-
     # init session data mem
     if ( !eval { $Self->{Key} = shmget( $Self->{IPCKey}, $Self->{IPCSize}, oct(1777) ) } ) {
         $Self->{Key} = shmget( $Self->{IPCKey}, 1, oct(1777) );
@@ -111,7 +108,7 @@ sub new {
     return $Self;
 }
 
-=item Log()
+=head2 Log()
 
 log something. log priorities are 'debug', 'info', 'notice' and 'error'.
 
@@ -247,7 +244,7 @@ sub Log {
     return 1;
 }
 
-=item GetLogEntry()
+=head2 GetLogEntry()
 
 to get the last log info back
 
@@ -264,7 +261,7 @@ sub GetLogEntry {
     return $Self->{ lc $Param{Type} }->{ $Param{What} } || '';
 }
 
-=item GetLog()
+=head2 GetLog()
 
 to get the tmp log data (from shared memory - ipc) in csv form
 
@@ -280,13 +277,16 @@ sub GetLog {
         shmread( $Self->{Key}, $String, 0, $Self->{IPCSize} ) || die "$!";
     }
 
+    # Remove \0 bytes that shmwrite adds for padding.
+    $String =~ s{\0}{}smxg;
+
     # encode the string
     $Kernel::OM->Get('Kernel::System::Encode')->EncodeInput( \$String );
 
     return $String;
 }
 
-=item CleanUp()
+=head2 CleanUp()
 
 to clean up tmp log data from shared memory (ipc)
 
@@ -302,16 +302,19 @@ sub CleanUp {
     # remove the shm
     if ( !shmctl( $Self->{Key}, 0, 0 ) ) {
         $Self->Log(
-            Priority => 'error',
+            Priority => 'notice',
             Message  => "Can't remove shm for log: $!",
         );
         return;
     }
 
+    # Re-initialize SHM segment.
+    $Self->{Key} = shmget( $Self->{IPCKey}, $Self->{IPCSize}, oct(1777) );
+
     return 1;
 }
 
-=item Dumper()
+=head2 Dumper()
 
 dump a perl variable to log
 
@@ -347,8 +350,6 @@ sub Dumper {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -53,7 +53,7 @@ sub Run {
         if ( !$Param{$Needed} ) {
             $Kernel::OM->Get('Kernel::System::Log')->Log(
                 Priority => 'error',
-                Message  => "Need $Needed!"
+                Message  => "Need $Needed!",
             );
             return;
         }
@@ -140,8 +140,18 @@ sub Run {
 
             # add attachments to notification
             if ( $Notification{Data}->{ArticleAttachmentInclude}->[0] ) {
+
+                # get article, it is needed for the correct behavior of the
+                # StripPlainBodyAsAttachment flag into the ArticleAttachmentIndex function
+                my %Article = $Kernel::OM->Get('Kernel::System::Ticket')->ArticleGet(
+                    ArticleID     => $Param{Data}->{ArticleID},
+                    UserID        => $Param{UserID},
+                    DynamicFields => 0,
+                );
+
                 my %Index = $TicketObject->ArticleAttachmentIndex(
                     ArticleID                  => $Param{Data}->{ArticleID},
+                    Article                    => \%Article,
                     UserID                     => $Param{UserID},
                     StripPlainBodyAsAttachment => 3,
                 );
@@ -277,6 +287,17 @@ sub Run {
                     next BUNDLE;
                 }
 
+                # Check if notification should not send to the customer.
+                if (
+                    $Bundle->{Recipient}->{Type} eq 'Customer'
+                    && $ConfigObject->Get('CustomerNotifyJustToRealCustomer')
+                    )
+                {
+
+                    # No UserID means it's not a mapped customer.
+                    next BUNDLE if !$Bundle->{Recipient}->{UserID};
+                }
+
                 my $Success = $Self->_SendRecipientNotification(
                     TicketID              => $Param{Data}->{TicketID},
                     Notification          => $Bundle->{Notification},
@@ -290,8 +311,9 @@ sub Run {
                 );
 
                 # remember to have sent
-                $AlreadySent{ $Bundle->{Recipient}->{UserID} } = 1;
-
+                if ( $Bundle->{Recipient}->{UserID} ) {
+                    $AlreadySent{ $Bundle->{Recipient}->{UserID} } = 1;
+                }
             }
 
             # get special recipients specific for each transport
@@ -389,6 +411,11 @@ sub _NotificationFilter {
         next KEY if $Key eq 'LanguageID';
         next KEY if $Key eq 'SendOnOutOfOffice';
         next KEY if $Key eq 'AgentEnabledByDefault';
+        next KEY if $Key eq 'EmailSecuritySettings';
+        next KEY if $Key eq 'EmailSigningCrypting';
+        next KEY if $Key eq 'EmailMissingCryptingKeys';
+        next KEY if $Key eq 'EmailMissingSigningKeys';
+        next KEY if $Key eq 'EmailDefaultSigningKeys';
 
         # check recipient fields from transport methods
         if ( $Key =~ m{\A Recipient}xms ) {
@@ -426,9 +453,24 @@ sub _NotificationFilter {
 
                 next VALUE if !$IsNotificationEventCondition;
 
+                # Get match value from the dynamic field backend, if applicable (bug#12257).
+                my $MatchValue;
+                my $SearchFieldParameter = $DynamicFieldBackendObject->SearchFieldParameterBuild(
+                    DynamicFieldConfig => $DynamicFieldConfig,
+                    Profile            => {
+                        $Key => $Value,
+                    },
+                );
+                if ( defined $SearchFieldParameter->{Parameter}->{Equals} ) {
+                    $MatchValue = $SearchFieldParameter->{Parameter}->{Equals};
+                }
+                else {
+                    $MatchValue = $Value;
+                }
+
                 $Match = $DynamicFieldBackendObject->ObjectMatch(
                     DynamicFieldConfig => $DynamicFieldConfig,
-                    Value              => $Value,
+                    Value              => $MatchValue,
                     ObjectAttributes   => $Param{Ticket},
                 );
 
@@ -597,6 +639,17 @@ sub _RecipientsGet {
                         Type    => 'rw',
                         UserID  => $Param{UserID},
                     );
+
+                    my %RoleList = $GroupObject->PermissionGroupRoleGet(
+                        GroupID => $GroupID,
+                        Type    => 'rw',
+                    );
+                    for my $RoleID ( sort keys %RoleList ) {
+                        my %RoleUserList = $GroupObject->PermissionRoleUserGet(
+                            RoleID => $RoleID,
+                        );
+                        %UserList = ( %RoleUserList, %UserList );
+                    }
 
                     my @UserIDs = sort keys %UserList;
 

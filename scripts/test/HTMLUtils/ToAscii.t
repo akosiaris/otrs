@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,8 +12,7 @@ use utf8;
 
 use vars (qw($Self));
 
-use Kernel::System::ObjectManager;
-
+# get HTMLUtils object
 my $HTMLUtilsObject = $Kernel::OM->Get('Kernel::System::HTMLUtils');
 
 # ToAscii tests
@@ -205,6 +204,26 @@ Fifth Line',
         Input  => 'a<style/>bc<style type="text/css">d</style  >e',
         Result => 'abce',
         Name   => 'ToAscii - <style/> (no whitespaces) removal'
+    },
+    {
+        Input  => '&#55357;&#56833;',
+        Result => '��',
+        Name   => 'Incorrectly encoded GRINNING FACE WITH SMILING EYES (decimal)'
+    },
+    {
+        Input  => '&#xD83D;&#xDE01;',
+        Result => '��',
+        Name   => 'Invalid encoded GRINNING FACE WITH SMILING EYES (hex)'
+    },
+    {
+        Input  => '&#128512;',
+        Result => '😀',
+        Name   => 'Correctly encoded GRINNING FACE WITH SMILING EYES (decimal)',
+    },
+    {
+        Input  => '&#x1F600;',
+        Result => '😀',
+        Name   => 'Correctly encoded GRINNING FACE WITH SMILING EYES (hex)',
     },
 );
 

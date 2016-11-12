@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU AFFERO General Public License as published by
@@ -9,12 +9,12 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 # or see http://www.gnu.org/licenses/agpl.txt.
 # --
 
@@ -111,7 +111,7 @@ GetOptions(
 # check needed params
 if ($Help) {
     print "otrs.CheckModules.pl - OTRS CheckModules\n";
-    print "Copyright (C) 2001-2015 OTRS AG, http://otrs.com/\n";
+    print "Copyright (C) 2001-2016 OTRS AG, http://otrs.com/\n";
     print "usage: otrs.CheckModules.pl [-list|all] \n";
     print "
    otrs.CheckModules.pl
@@ -201,6 +201,24 @@ my @NeededModules = (
             aptget => 'libtimedate-perl',
             emerge => 'dev-perl/TimeDate',
             zypper => 'perl-TimeDate',
+        },
+    },
+    {
+        Module    => 'DateTime',
+        Required  => 1,
+        InstTypes => {
+            aptget => 'libdatetime-perl',
+            emerge => 'dev-perl/DateTime',
+            zypper => 'perl-DateTime',
+        },
+    },
+    {
+        Module    => 'DateTime::TimeZone',
+        Required  => 1,
+        InstTypes => {
+            aptget => 'libdatetime-perl',
+            emerge => 'dev-perl/DateTime',
+            zypper => 'perl-DateTime',
         },
     },
     {
@@ -412,12 +430,6 @@ my @NeededModules = (
         },
     },
     {
-        # perlcore
-        Module   => 'Time::Piece',
-        Required => 1,
-        Comment  => 'Required for statistics.',
-    },
-    {
         Module    => 'XML::LibXML',
         Required  => 0,
         Comment   => 'Required for Generic Interface XSLT mapping module.',
@@ -523,8 +535,9 @@ sub _Check {
         #   Don't do this for Net::DNS as it seems to take very long (>20s) in a
         #   mod_perl environment sometimes.
         my %DontRequire = (
-            'Net::DNS'     => 1,
-            'Email::Valid' => 1,    # uses Net::DNS internally
+            'Net::DNS'        => 1,
+            'Email::Valid'    => 1,    # uses Net::DNS internally
+            'Apache2::Reload' => 1,    # is not needed / working on systems without mod_perl (like Plack etc.)
         );
 
         ## no critic

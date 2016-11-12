@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -16,6 +16,7 @@ use Kernel::Language qw(Translatable);
 
 our @ObjectDependencies = (
     'Kernel::Config',
+    'Kernel::Language',
     'Kernel::System::DB',
     'Kernel::System::DynamicField',
     'Kernel::System::DynamicField::Backend',
@@ -212,11 +213,19 @@ sub GetObjectAttributes {
             Block            => 'InputField',
         },
         {
-            Name             => Translatable('CustomerUserLogin'),
+            Name             => Translatable('CustomerUserLogin (complex search)'),
             UseAsXvalue      => 0,
             UseAsValueSeries => 0,
             UseAsRestriction => 1,
             Element          => 'CustomerUserLogin',
+            Block            => 'InputField',
+        },
+        {
+            Name             => Translatable('CustomerUserLogin (exact match)'),
+            UseAsXvalue      => 0,
+            UseAsValueSeries => 0,
+            UseAsRestriction => 1,
+            Element          => 'CustomerUserLoginRaw',
             Block            => 'InputField',
         },
         {
@@ -369,7 +378,8 @@ sub GetObjectAttributes {
 
         # get service list
         my %Service = $Kernel::OM->Get('Kernel::System::Service')->ServiceList(
-            UserID => 1,
+            KeepChildren => $ConfigObject->Get('Ticket::Service::KeepChildren'),
+            UserID       => 1,
         );
 
         # get sla list
@@ -436,9 +446,9 @@ sub GetObjectAttributes {
             Block            => 'SelectField',
             Translation      => 1,
             Values           => {
-                ArchivedTickets    => 'Archived tickets',
-                NotArchivedTickets => 'Unarchived tickets',
-                AllTickets         => 'All tickets',
+                ArchivedTickets    => Translatable('Archived tickets'),
+                NotArchivedTickets => Translatable('Unarchived tickets'),
+                AllTickets         => Translatable('All tickets'),
             },
         );
 
@@ -515,16 +525,26 @@ sub GetObjectAttributes {
     }
     else {
 
-        my %ObjectAttribute = (
-            Name             => Translatable('CustomerID'),
-            UseAsXvalue      => 0,
-            UseAsValueSeries => 0,
-            UseAsRestriction => 1,
-            Element          => 'CustomerID',
-            Block            => 'InputField',
+        my @CustomerIDAttributes = (
+            {
+                Name             => Translatable('CustomerID (complex search)'),
+                UseAsXvalue      => 0,
+                UseAsValueSeries => 0,
+                UseAsRestriction => 1,
+                Element          => 'CustomerID',
+                Block            => 'InputField',
+            },
+            {
+                Name             => Translatable('CustomerID (exact match)'),
+                UseAsXvalue      => 0,
+                UseAsValueSeries => 0,
+                UseAsRestriction => 1,
+                Element          => 'CustomerIDRaw',
+                Block            => 'InputField',
+            },
         );
 
-        push @ObjectAttributes, \%ObjectAttribute;
+        push @ObjectAttributes, @CustomerIDAttributes;
     }
 
     # get dynamic field backend object
@@ -757,14 +777,17 @@ sub GetHeaderLine {
 
         my %Selected = map { $_ => 1 } @{ $Param{XValue}{SelectedValues} };
 
+        # get language object
+        my $LanguageObject = $Kernel::OM->Get('Kernel::Language');
+
         my $Attributes = $Self->_KindsOfReporting();
-        my @HeaderLine = ('Evaluation by');
+        my @HeaderLine = ( $LanguageObject->Translate('Evaluation by') );
         my $SortedRef  = $Self->_SortedKindsOfReporting();
 
         ATTRIBUTE:
         for my $Attribute ( @{$SortedRef} ) {
             next ATTRIBUTE if !$Selected{$Attribute};
-            push @HeaderLine, $Attributes->{$Attribute};
+            push @HeaderLine, $LanguageObject->Translate( $Attributes->{$Attribute} );
         }
         return \@HeaderLine;
 
@@ -1099,7 +1122,7 @@ sub _ReportingValues {
         );
 
         my $SolutionTime = $TimeObject->TimeStamp2SystemTime(
-            String => $Ticket{SolutionTime},
+            String => $Ticket{Closed},
         );
 
         $SolutionAllOver{$TicketID} = $SolutionTime - $Ticket{CreateTimeUnix};
@@ -1302,29 +1325,29 @@ sub _KindsOfReporting {
     my $Self = shift;
 
     my %KindsOfReporting = (
-        SolutionAverageAllOver => 'Solution Average',
-        SolutionMinTimeAllOver => 'Solution Min Time',
-        SolutionMaxTimeAllOver => 'Solution Max Time',
-        NumberOfTicketsAllOver => 'Number of Tickets',
-        SolutionAverage        => 'Solution Average (affected by escalation configuration)',
-        SolutionMinTime        => 'Solution Min Time (affected by escalation configuration)',
-        SolutionMaxTime        => 'Solution Max Time (affected by escalation configuration)',
+        SolutionAverageAllOver => Translatable('Solution Average'),
+        SolutionMinTimeAllOver => Translatable('Solution Min Time'),
+        SolutionMaxTimeAllOver => Translatable('Solution Max Time'),
+        NumberOfTicketsAllOver => Translatable('Number of Tickets'),
+        SolutionAverage        => Translatable('Solution Average (affected by escalation configuration)'),
+        SolutionMinTime        => Translatable('Solution Min Time (affected by escalation configuration)'),
+        SolutionMaxTime        => Translatable('Solution Max Time (affected by escalation configuration)'),
         SolutionWorkingTimeAverage =>
-            'Solution Working Time Average (affected by escalation configuration)',
+            Translatable('Solution Working Time Average (affected by escalation configuration)'),
         SolutionMinWorkingTime =>
-            'Solution Min Working Time (affected by escalation configuration)',
+            Translatable('Solution Min Working Time (affected by escalation configuration)'),
         SolutionMaxWorkingTime =>
-            'Solution Max Working Time (affected by escalation configuration)',
-        ResponseAverage => 'Response Average (affected by escalation configuration)',
-        ResponseMinTime => 'Response Min Time (affected by escalation configuration)',
-        ResponseMaxTime => 'Response Max Time (affected by escalation configuration)',
+            Translatable('Solution Max Working Time (affected by escalation configuration)'),
+        ResponseAverage => Translatable('Response Average (affected by escalation configuration)'),
+        ResponseMinTime => Translatable('Response Min Time (affected by escalation configuration)'),
+        ResponseMaxTime => Translatable('Response Max Time (affected by escalation configuration)'),
         ResponseWorkingTimeAverage =>
-            'Response Working Time Average (affected by escalation configuration)',
+            Translatable('Response Working Time Average (affected by escalation configuration)'),
         ResponseMinWorkingTime =>
-            'Response Min Working Time (affected by escalation configuration)',
+            Translatable('Response Min Working Time (affected by escalation configuration)'),
         ResponseMaxWorkingTime =>
-            'Response Max Working Time (affected by escalation configuration)',
-        NumberOfTickets => 'Number of Tickets (affected by escalation configuration)',
+            Translatable('Response Max Working Time (affected by escalation configuration)'),
+        NumberOfTickets => Translatable('Number of Tickets (affected by escalation configuration)'),
     );
     return \%KindsOfReporting;
 }
@@ -1380,7 +1403,9 @@ sub _AllowedTicketSearchAttributes {
         ResponsibleIDs
         WatchUserIDs
         CustomerID
+        CustomerIDRaw
         CustomerUserLogin
+        CustomerUserLoginRaw
         CreatedUserIDs
         CreatedTypes
         CreatedTypeIDs

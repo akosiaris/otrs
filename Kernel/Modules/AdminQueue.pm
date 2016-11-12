@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -11,6 +11,8 @@ package Kernel::Modules::AdminQueue;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -79,6 +81,7 @@ sub Run {
     my $LayoutObject = $Kernel::OM->Get('Kernel::Output::HTML::Layout');
     my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
     my $MainObject   = $Kernel::OM->Get('Kernel::System::Main');
+    my $Notification = $ParamObject->GetParam( Param => 'Notification' ) || '';
 
     # ------------------------------------------------------------ #
     # change
@@ -87,6 +90,8 @@ sub Run {
 
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
+        $Output .= $LayoutObject->Notify( Info => Translatable('Queue updated!') )
+            if ( $Notification && $Notification eq 'Update' );
 
         $Self->_Edit(
             Action => 'Change',
@@ -105,7 +110,7 @@ sub Run {
     }
 
     # ------------------------------------------------------------ #
-    # update action
+    # change action
     # ------------------------------------------------------------ #
     elsif ( $Self->{Subaction} eq 'ChangeAction' ) {
 
@@ -123,8 +128,8 @@ sub Run {
             my $Output = $LayoutObject->Header();
             $Output .= $LayoutObject->NavigationBar();
             $Output .= $LayoutObject->Warning(
-                Message => 'Don\'t use :: in queue name!',
-                Comment => 'Click back and change it!',
+                Message => Translatable('Don\'t use :: in queue name!'),
+                Comment => Translatable('Click back and change it!'),
             );
             $Output .= $LayoutObject->Footer();
             return $Output;
@@ -218,18 +223,34 @@ sub Run {
                     }
                 }
 
-                $Self->_Overview();
+                # if $Note has some notify, create output with $Note
+                # otherwise redirect depending on what button ('Save' or 'Save and Finish') is clicked
+                if ( $Note ne '' ) {
+                    $Self->_Overview();
+                    my $Output = $LayoutObject->Header();
+                    $Output .= $LayoutObject->NavigationBar();
+                    $Output .= $Note;
+                    $Output .= $LayoutObject->Output(
+                        TemplateFile => 'AdminQueue',
+                        Data         => \%Param,
+                    );
+                    $Output .= $LayoutObject->Footer();
 
-                my $Output = $LayoutObject->Header();
-                $Output .= $LayoutObject->NavigationBar();
-                $Output .= $LayoutObject->Notify( Info => 'Queue updated!' );
-                $Output .= $LayoutObject->Output(
-                    TemplateFile => 'AdminQueue',
-                    Data         => \%Param,
-                );
-                $Output .= $LayoutObject->Footer();
+                    return $Output;
+                }
 
-                return $Output;
+                # if the user would like to continue editing the queue, just redirect to the edit screen
+                if ( $ParamObject->GetParam( Param => 'ContinueAfterSave' ) eq '1' ) {
+                    return $LayoutObject->Redirect(
+                        OP => "Action=$Self->{Action};Subaction=Change;QueueID=$QueueID;Notification=Update"
+                    );
+                }
+                else {
+
+                    # otherwise return to overview
+                    return $LayoutObject->Redirect( OP => "Action=$Self->{Action};Notification=Update" );
+                }
+
             }
         }
 
@@ -299,8 +320,8 @@ sub Run {
             my $Output = $LayoutObject->Header();
             $Output .= $LayoutObject->NavigationBar();
             $Output .= $LayoutObject->Warning(
-                Message => 'Don\'t use :: in queue name!',
-                Comment => 'Click back and change it!',
+                Message => Translatable('Don\'t use :: in queue name!'),
+                Comment => Translatable('Click back and change it!'),
             );
             $Output .= $LayoutObject->Footer();
 
@@ -440,6 +461,9 @@ sub Run {
 
         my $Output = $LayoutObject->Header();
         $Output .= $LayoutObject->NavigationBar();
+        $Output .= $LayoutObject->Notify( Info => Translatable('Queue updated!') )
+            if ( $Notification && $Notification eq 'Update' );
+
         $Output .= $LayoutObject->Output(
             TemplateFile => 'AdminQueue',
             Data         => \%Param,
@@ -473,15 +497,11 @@ sub _Edit {
         Class      => 'Modernize Validate_Required ' . ( $Param{Errors}->{'ValidIDInvalid'} || '' ),
     );
 
-    my $DBObject = $Kernel::OM->Get('Kernel::System::DB');
-
     $Param{GroupOption} = $LayoutObject->BuildSelection(
         Data => {
-            $DBObject->GetTableData(
-                What  => 'id, name',
-                Table => 'groups',
+            $Kernel::OM->Get('Kernel::System::Group')->GroupList(
                 Valid => 1,
-            ),
+                )
         },
         Translation => 0,
         Name        => 'GroupID',
@@ -614,7 +634,7 @@ sub _Edit {
     $Param{FollowUpLockYesNoOption} = $LayoutObject->BuildSelection(
         Data       => $ConfigObject->Get('YesNoOptions'),
         Name       => 'FollowUpLock',
-        SelectedID => $Param{FollowUpLock} || 0,
+        SelectedID => $Param{FollowUpLock} // 0,
         Class      => 'Modernize',
     );
 
@@ -636,7 +656,7 @@ sub _Edit {
     }
     $Param{DefaultSignKeyOption} = $LayoutObject->BuildSelection(
         Data => {
-            '' => '-none-',
+            '' => Translatable('-none-'),
             %DefaultSignKeyList
         },
         Name       => 'DefaultSignKey',
@@ -651,12 +671,11 @@ sub _Edit {
         SelectedID  => $Param{SalutationID},
         Class => 'Modernize Validate_Required ' . ( $Param{Errors}->{'SalutationIDInvalid'} || '' ),
     );
+
     $Param{FollowUpOption} = $LayoutObject->BuildSelection(
         Data => {
-            $DBObject->GetTableData(
-                What  => 'id, name',
-                Valid => 1,
-                Table => 'follow_up_possible',
+            $QueueObject->GetFollowUpOptionList(
+                Valid => 0,
             ),
         },
         Name       => 'FollowUpID',
@@ -667,10 +686,12 @@ sub _Edit {
     );
     my %Calendar = ( '' => '-' );
 
-    for my $Number ( '', 1 .. 50 ) {
-        if ( $ConfigObject->Get("TimeVacationDays::Calendar$Number") ) {
-            $Calendar{$Number} = "Calendar $Number - "
-                . $ConfigObject->Get( "TimeZone::Calendar" . $Number . "Name" );
+    my $Maximum = $ConfigObject->Get("MaximumCalendarNumber") || 50;
+
+    for my $CalendarNumber ( '', 1 .. $Maximum ) {
+        if ( $ConfigObject->Get("TimeVacationDays::Calendar$CalendarNumber") ) {
+            $Calendar{$CalendarNumber} = "Calendar $CalendarNumber - "
+                . $ConfigObject->Get( "TimeZone::Calendar" . $CalendarNumber . "Name" );
         }
     }
     $Param{CalendarOption} = $LayoutObject->BuildSelection(
@@ -688,14 +709,6 @@ sub _Edit {
             %{ $Param{Errors} },
         },
     );
-
-    # shows header
-    if ( $Param{Action} eq 'Change' ) {
-        $LayoutObject->Block( Name => 'HeaderEdit' );
-    }
-    else {
-        $LayoutObject->Block( Name => 'HeaderAdd' );
-    }
 
     if ( $Param{DefaultSignKeyOption} ) {
         $LayoutObject->Block(
@@ -792,6 +805,7 @@ sub _Overview {
 
     $LayoutObject->Block( Name => 'ActionList' );
     $LayoutObject->Block( Name => 'ActionAdd' );
+    $LayoutObject->Block( Name => 'Filter' );
 
     $LayoutObject->Block(
         Name => 'OverviewResult',

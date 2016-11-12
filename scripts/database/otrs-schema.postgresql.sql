@@ -460,6 +460,7 @@ CREATE TABLE ticket_history (
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id)
 );
+CREATE INDEX ticket_history_article_id ON ticket_history (article_id);
 CREATE INDEX ticket_history_create_time ON ticket_history (create_time);
 CREATE INDEX ticket_history_history_type_id ON ticket_history (history_type_id);
 CREATE INDEX ticket_history_owner_id ON ticket_history (owner_id);
@@ -577,15 +578,15 @@ CREATE TABLE article (
     ticket_id BIGINT NOT NULL,
     article_type_id SMALLINT NOT NULL,
     article_sender_type_id SMALLINT NOT NULL,
-    a_from VARCHAR (3800) NULL,
-    a_reply_to VARCHAR (500) NULL,
-    a_to VARCHAR (3800) NULL,
-    a_cc VARCHAR (3800) NULL,
+    a_from VARCHAR NULL,
+    a_reply_to VARCHAR NULL,
+    a_to VARCHAR NULL,
+    a_cc VARCHAR NULL,
     a_subject VARCHAR (3800) NULL,
     a_message_id VARCHAR (3800) NULL,
     a_message_id_md5 VARCHAR (32) NULL,
-    a_in_reply_to VARCHAR (3800) NULL,
-    a_references VARCHAR (3800) NULL,
+    a_in_reply_to VARCHAR NULL,
+    a_references VARCHAR NULL,
     a_content_type VARCHAR (250) NULL,
     a_body VARCHAR NOT NULL,
     incoming_time INTEGER NOT NULL,
@@ -1173,14 +1174,12 @@ CREATE TABLE gi_webservice_config (
     id serial NOT NULL,
     name VARCHAR (200) NOT NULL,
     config TEXT NOT NULL,
-    config_md5 VARCHAR (32) NOT NULL,
     valid_id SMALLINT NOT NULL,
     create_time timestamp(0) NOT NULL,
     create_by INTEGER NOT NULL,
     change_time timestamp(0) NOT NULL,
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id),
-    CONSTRAINT gi_webservice_config_config_md5 UNIQUE (config_md5),
     CONSTRAINT gi_webservice_config_name UNIQUE (name)
 );
 -- ----------------------------------------------------------
@@ -1227,20 +1226,6 @@ CREATE TABLE gi_debugger_entry_content (
 CREATE INDEX gi_debugger_entry_content_create_time ON gi_debugger_entry_content (create_time);
 CREATE INDEX gi_debugger_entry_content_debug_level ON gi_debugger_entry_content (debug_level);
 -- ----------------------------------------------------------
---  create table gi_object_lock_state
--- ----------------------------------------------------------
-CREATE TABLE gi_object_lock_state (
-    webservice_id INTEGER NOT NULL,
-    object_type VARCHAR (30) NOT NULL,
-    object_id BIGINT NOT NULL,
-    lock_state VARCHAR (30) NOT NULL,
-    lock_state_counter INTEGER NOT NULL,
-    create_time timestamp(0) NOT NULL,
-    change_time timestamp(0) NOT NULL,
-    CONSTRAINT gi_object_lock_state_list UNIQUE (webservice_id, object_type, object_id)
-);
-CREATE INDEX object_lock_state_list_state ON gi_object_lock_state (webservice_id, object_type, object_id, lock_state);
--- ----------------------------------------------------------
 --  create table smime_signer_cert_relations
 -- ----------------------------------------------------------
 CREATE TABLE smime_signer_cert_relations (
@@ -1270,6 +1255,7 @@ CREATE TABLE dynamic_field_value (
 CREATE INDEX dynamic_field_value_field_values ON dynamic_field_value (object_id, field_id);
 CREATE INDEX dynamic_field_value_search_date ON dynamic_field_value (field_id, value_date);
 CREATE INDEX dynamic_field_value_search_int ON dynamic_field_value (field_id, value_int);
+CREATE INDEX dynamic_field_value_search_text ON dynamic_field_value (field_id, value_text);
 -- ----------------------------------------------------------
 --  create table dynamic_field
 -- ----------------------------------------------------------
@@ -1289,6 +1275,16 @@ CREATE TABLE dynamic_field (
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id),
     CONSTRAINT dynamic_field_name UNIQUE (name)
+);
+-- ----------------------------------------------------------
+--  create table dynamic_field_obj_id_name
+-- ----------------------------------------------------------
+CREATE TABLE dynamic_field_obj_id_name (
+    object_id serial NOT NULL,
+    object_name VARCHAR (200) NOT NULL,
+    object_type VARCHAR (200) NOT NULL,
+    PRIMARY KEY(object_id),
+    CONSTRAINT dynamic_field_object_name UNIQUE (object_name, object_type)
 );
 -- ----------------------------------------------------------
 --  create table pm_process
@@ -1443,13 +1439,11 @@ CREATE TABLE cloud_service_config (
     id serial NOT NULL,
     name VARCHAR (200) NOT NULL,
     config TEXT NOT NULL,
-    config_md5 VARCHAR (32) NOT NULL,
     valid_id SMALLINT NOT NULL,
     create_time timestamp(0) NOT NULL,
     create_by INTEGER NOT NULL,
     change_time timestamp(0) NOT NULL,
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id),
-    CONSTRAINT cloud_service_config_config_md5 UNIQUE (config_md5),
     CONSTRAINT cloud_service_config_name UNIQUE (name)
 );

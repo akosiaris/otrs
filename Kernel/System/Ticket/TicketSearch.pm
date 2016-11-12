@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -17,15 +17,12 @@ our $ObjectManagerDisabled = 1;
 
 Kernel::System::Ticket::TicketSearch - ticket search lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All ticket search functions.
 
-=over 4
 
-=cut
-
-=item TicketSearch()
+=head2 TicketSearch()
 
 To find tickets in your system.
 
@@ -125,6 +122,8 @@ To find tickets in your system.
         #       values in an operator with OR.
         #   You can also pass more than one argument to an operator: ['value1', 'value2']
         DynamicField_FieldNameX => {
+            Empty             => 1,                       # will return dynamic fields without a value
+                                                          # set to 0 to search fields with a value present
             Equals            => 123,
             Like              => 'value*',                # "equals" operator with wildcard support
             GreaterThan       => '2001-01-01 01:01:01',
@@ -266,7 +265,7 @@ To find tickets in your system.
 
         # OrderBy and SortBy (optional)
         OrderBy => 'Down',  # Down|Up
-        SortBy  => 'Age',   # Owner|Responsible|CustomerID|State|TicketNumber|Queue|Priority|Age|Type|Lock
+        SortBy  => 'Age',   # Created|Owner|Responsible|CustomerID|State|TicketNumber|Queue|Priority|Age|Type|Lock
                             # Changed|Title|Service|SLA|PendingTime|EscalationTime
                             # EscalationUpdateTime|EscalationResponseTime|EscalationSolutionTime
                             # DynamicField_FieldNameX
@@ -332,6 +331,7 @@ sub TicketSearch {
         Type                   => 'st.type_id',
         Priority               => 'st.ticket_priority_id',
         Age                    => 'st.create_time_unix',
+        Created                => 'st.create_time',
         Changed                => 'st.change_time',
         Service                => 'st.service_id',
         SLA                    => 'st.sla_id',
@@ -444,16 +444,9 @@ sub TicketSearch {
     }
 
     # check sort/order by options
-    my @SortByArray;
-    my @OrderByArray;
-    if ( ref $SortBy eq 'ARRAY' ) {
-        @SortByArray  = @{$SortBy};
-        @OrderByArray = @{$OrderBy};
-    }
-    else {
-        @SortByArray  = ($SortBy);
-        @OrderByArray = ($OrderBy);
-    }
+    my @SortByArray  = ( ref $SortBy eq 'ARRAY'  ? @{$SortBy}  : ($SortBy) );
+    my @OrderByArray = ( ref $OrderBy eq 'ARRAY' ? @{$OrderBy} : ($OrderBy) );
+
     for my $Count ( 0 .. $#SortByArray ) {
         if (
             !$SortOptions{ $SortByArray[$Count] }
@@ -1290,12 +1283,13 @@ sub TicketSearch {
 
     DYNAMIC_FIELD:
     for my $DynamicField ( @{$TicketDynamicFields}, @{$ArticleDynamicFields} ) {
-        my $SearchParam = $Param{ "DynamicField_" . $DynamicField->{Name} };
+        my $SearchParam = delete $Param{ "DynamicField_" . $DynamicField->{Name} };
 
         next DYNAMIC_FIELD if ( !$SearchParam );
         next DYNAMIC_FIELD if ( ref $SearchParam ne 'HASH' );
 
         my $NeedJoin;
+        my $QueryForEmptyValues = 0;
 
         for my $Operator ( sort keys %{$SearchParam} ) {
 
@@ -1314,34 +1308,51 @@ sub TicketSearch {
                 # check search attribute, we do not need to search for *
                 next TEXT if $Text =~ /^\%{1,3}$/;
 
-                # validate data type
-                my $ValidateSuccess = $DynamicFieldBackendObject->ValueValidate(
-                    DynamicFieldConfig => $DynamicField,
-                    Value              => $Text,
-                    UserID             => $Param{UserID} || 1,
-                );
-                if ( !$ValidateSuccess ) {
-                    $Kernel::OM->Get('Kernel::System::Log')->Log(
-                        Priority => 'error',
-                        Message =>
-                            "Search not executed due to invalid value '"
-                            . $Text
-                            . "' on field '"
-                            . $DynamicField->{Name}
-                            . "'!",
+                # skip validation for empty values
+                if ( $Operator ne 'Empty' ) {
+
+                    # validate data type
+                    my $ValidateSuccess = $DynamicFieldBackendObject->ValueValidate(
+                        DynamicFieldConfig => $DynamicField,
+                        Value              => $Text,
+                        UserID             => $Param{UserID} || 1,
                     );
-                    return;
+                    if ( !$ValidateSuccess ) {
+                        $Kernel::OM->Get('Kernel::System::Log')->Log(
+                            Priority => 'error',
+                            Message =>
+                                "Search not executed due to invalid value '"
+                                . $Text
+                                . "' on field '"
+                                . $DynamicField->{Name}
+                                . "'!",
+                        );
+                        return;
+                    }
                 }
 
                 if ($Counter) {
                     $SQLExtSub .= ' OR ';
                 }
-                $SQLExtSub .= $DynamicFieldBackendObject->SearchSQLGet(
-                    DynamicFieldConfig => $DynamicField,
-                    TableAlias         => "dfv$DynamicFieldJoinCounter",
-                    Operator           => $Operator,
-                    SearchTerm         => $Text,
-                );
+
+                # Empty => 1 requires a LEFT JOIN.
+                if ( $Operator eq 'Empty' && $Text ) {
+                    $SQLExtSub .= $DynamicFieldBackendObject->SearchSQLGet(
+                        DynamicFieldConfig => $DynamicField,
+                        TableAlias         => "dfvEmpty$DynamicFieldJoinCounter",
+                        Operator           => $Operator,
+                        SearchTerm         => $Text,
+                    );
+                    $QueryForEmptyValues = 1;
+                }
+                else {
+                    $SQLExtSub .= $DynamicFieldBackendObject->SearchSQLGet(
+                        DynamicFieldConfig => $DynamicField,
+                        TableAlias         => "dfv$DynamicFieldJoinCounter",
+                        Operator           => $Operator,
+                        SearchTerm         => $Text,
+                    );
+                }
 
                 $Counter++;
             }
@@ -1354,13 +1365,23 @@ sub TicketSearch {
 
         if ($NeedJoin) {
 
+            # Join the table for this dynamic field
             if ( $DynamicField->{ObjectType} eq 'Ticket' ) {
 
-                # Join the table for this dynamic field
-                $SQLFrom .= "INNER JOIN dynamic_field_value dfv$DynamicFieldJoinCounter
-                    ON (st.id = dfv$DynamicFieldJoinCounter.object_id
-                        AND dfv$DynamicFieldJoinCounter.field_id = " .
-                    $DBObject->Quote( $DynamicField->{ID}, 'Integer' ) . ") ";
+                if ($QueryForEmptyValues) {
+
+                    # Use LEFT JOIN to allow for null values.
+                    $SQLFrom .= "LEFT JOIN dynamic_field_value dfvEmpty$DynamicFieldJoinCounter
+                        ON (st.id = dfvEmpty$DynamicFieldJoinCounter.object_id
+                            AND dfvEmpty$DynamicFieldJoinCounter.field_id = " .
+                        $DBObject->Quote( $DynamicField->{ID}, 'Integer' ) . ") ";
+                }
+                else {
+                    $SQLFrom .= "INNER JOIN dynamic_field_value dfv$DynamicFieldJoinCounter
+                        ON (st.id = dfv$DynamicFieldJoinCounter.object_id
+                            AND dfv$DynamicFieldJoinCounter.field_id = " .
+                        $DBObject->Quote( $DynamicField->{ID}, 'Integer' ) . ") ";
+                }
             }
             elsif ( $DynamicField->{ObjectType} eq 'Article' ) {
                 if ( !$ArticleJoinSQL ) {
@@ -1368,10 +1389,20 @@ sub TicketSearch {
                     $SQLFrom .= $ArticleJoinSQL;
                 }
 
-                $SQLFrom .= "INNER JOIN dynamic_field_value dfv$DynamicFieldJoinCounter
-                    ON (art.id = dfv$DynamicFieldJoinCounter.object_id
-                        AND dfv$DynamicFieldJoinCounter.field_id = " .
-                    $DBObject->Quote( $DynamicField->{ID}, 'Integer' ) . ") ";
+                if ($QueryForEmptyValues) {
+
+                    # Use LEFT JOIN to allow for null values.
+                    $SQLFrom .= "LEFT JOIN dynamic_field_value dfvEmpty$DynamicFieldJoinCounter
+                        ON (art.id = dfvEmpty$DynamicFieldJoinCounter.object_id
+                            AND dfvEmpty$DynamicFieldJoinCounter.field_id = " .
+                        $DBObject->Quote( $DynamicField->{ID}, 'Integer' ) . ") ";
+                }
+                else {
+                    $SQLFrom .= "INNER JOIN dynamic_field_value dfv$DynamicFieldJoinCounter
+                        ON (art.id = dfv$DynamicFieldJoinCounter.object_id
+                            AND dfv$DynamicFieldJoinCounter.field_id = " .
+                        $DBObject->Quote( $DynamicField->{ID}, 'Integer' ) . ") ";
+                }
 
             }
 
@@ -1379,6 +1410,21 @@ sub TicketSearch {
 
             $DynamicFieldJoinCounter++;
         }
+    }
+
+    # catch searches for non-existing dynamic fields
+    PARAMS:
+    for my $Key ( sort keys %Param ) {
+        next PARAMS if !$Param{$Key};
+        next PARAMS if $Key !~ /^DynamicField_(.*)$/;
+
+        my $DynamicFieldName = $1;
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'Error',
+            Message  => qq[No such dynamic field "$DynamicFieldName" (or it is inactive)],
+        );
+
+        return;
     }
 
     # get time object
@@ -1942,7 +1988,7 @@ sub TicketSearch {
         )
     {
 
-        # get close state ids
+        # get pending state ids
         my @List = $Kernel::OM->Get('Kernel::System::State')->StateGetStatesByType(
             StateType => [ 'pending reminder', 'pending auto' ],
             Result    => 'ID',
@@ -2136,6 +2182,25 @@ sub TicketSearch {
                 $SQLSelect .= ", $SQLOrderField ";
                 $SQLExt    .= " $SQLOrderField ";
             }
+            elsif (
+                $SortByArray[$Count] eq 'Owner'
+                || $SortByArray[$Count] eq 'Responsible'
+                )
+            {
+                # include first and last name in select
+                $SQLSelect
+                    .= ', ' . $SortOptions{ $SortByArray[$Count] }
+                    . ", u.first_name, u.last_name ";
+
+                # join the users table on user's id
+                $SQLFrom
+                    .= ' JOIN users u '
+                    . ' ON ' . $SortOptions{ $SortByArray[$Count] } . ' = u.id ';
+
+                # sort by first and last name
+                my $OrderBySuffix = $OrderByArray[$Count] eq 'Up' ? 'ASC' : 'DESC';
+                $SQLExt .= " u.first_name $OrderBySuffix, u.last_name ";
+            }
             else {
 
                 # regular sort
@@ -2234,7 +2299,7 @@ sub TicketSearch {
     }
 }
 
-=item SearchStringStopWordsFind()
+=head2 SearchStringStopWordsFind()
 
 Find stop words within given search string.
 
@@ -2293,13 +2358,17 @@ sub SearchStringStopWordsFind {
         WORD:
         for my $Word ( @{ $StopWordRaw->{$Language} } ) {
 
-            next WORD if !$Word;
+            next WORD if !defined $Word || !length $Word;
 
             $Word = lc $Word;
 
             $StopWord{$Word} = 1;
         }
     }
+
+    my $SearchIndexAttributes = $Kernel::OM->Get('Kernel::Config')->Get('Ticket::SearchIndex::Attribute');
+    my $WordLengthMin         = $SearchIndexAttributes->{WordLengthMin} || 3;
+    my $WordLengthMax         = $SearchIndexAttributes->{WordLengthMax} || 30;
 
     my %StopWordsFound;
     SEARCHSTRING:
@@ -2321,13 +2390,14 @@ sub SearchStringStopWordsFind {
             }
         }
 
-        @{ $StopWordsFound{$Key} } = grep { $StopWord{$_} } sort keys %Words;
+        @{ $StopWordsFound{$Key} }
+            = grep { $StopWord{$_} || length $_ < $WordLengthMin || length $_ > $WordLengthMax } sort keys %Words;
     }
 
     return \%StopWordsFound;
 }
 
-=item SearchStringStopWordsUsageWarningActive()
+=head2 SearchStringStopWordsUsageWarningActive()
 
 Checks if warnings for stop words in search strings are active or not.
 
@@ -2356,7 +2426,7 @@ sub SearchStringStopWordsUsageWarningActive {
 
 =cut
 
-=item _InConditionGet()
+=head2 _InConditionGet()
 
 internal function to create an
 
@@ -2374,25 +2444,28 @@ condition string from an array.
 sub _InConditionGet {
     my ( $Self, %Param ) = @_;
 
-    # check needed stuff
-    for my $Key (qw(TableColumn IDRef)) {
-        if ( !$Param{$Key} ) {
-            $Kernel::OM->Get('Kernel::System::Log')->Log(
-                Priority => 'error',
-                Message  => "Need $Key!",
-            );
-            return;
-        }
+    if ( !$Param{TableColumn} ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "Need TableColumn!",
+        );
+        return;
+    }
+
+    if ( !$Param{IDRef} || ref $Param{IDRef} ne 'ARRAY' || !@{ $Param{IDRef} } ) {
+        $Kernel::OM->Get('Kernel::System::Log')->Log(
+            Priority => 'error',
+            Message  => "Need IDRef!",
+        );
+        return;
     }
 
     # sort ids to cache the SQL query
     my @SortedIDs = sort { $a <=> $b } @{ $Param{IDRef} };
 
-    # quote values
-    SORTEDID:
-    for my $Value (@SortedIDs) {
-        next SORTEDID if !defined $Kernel::OM->Get('Kernel::System::DB')->Quote( $Value, 'Integer' );
-    }
+    # Error out if some values were not integers.
+    @SortedIDs = map { $Kernel::OM->Get('Kernel::System::DB')->Quote( $_, 'Integer' ) } @SortedIDs;
+    return if scalar @SortedIDs != scalar @{ $Param{IDRef} };
 
     # split IN statement with more than 900 elements in more statements combined with OR
     # because Oracle doesn't support more than 1000 elements for one IN statement.
@@ -2424,8 +2497,6 @@ sub _InConditionGet {
 1;
 
 =end Internal:
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

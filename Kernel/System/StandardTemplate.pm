@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -22,22 +22,16 @@ our @ObjectDependencies = (
 
 Kernel::System::StandardTemplate - std template lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All std template functions. E. g. to add std template or other functions.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create an object
 
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $StandardTemplateObject = $Kernel::OM->Get('Kernel::System::StandardTemplate');
 
 =cut
@@ -52,7 +46,7 @@ sub new {
     return $Self;
 }
 
-=item StandardTemplateAdd()
+=head2 StandardTemplateAdd()
 
 add new std template
 
@@ -123,7 +117,7 @@ sub StandardTemplateAdd {
     return $ID;
 }
 
-=item StandardTemplateGet()
+=head2 StandardTemplateGet()
 
 get std template attributes
 
@@ -194,7 +188,7 @@ sub StandardTemplateGet {
     return %Data;
 }
 
-=item StandardTemplateDelete()
+=head2 StandardTemplateDelete()
 
 delete a standard template
 
@@ -245,7 +239,7 @@ sub StandardTemplateDelete {
     return 1;
 }
 
-=item StandardTemplateUpdate()
+=head2 StandardTemplateUpdate()
 
 update std template attributes
 
@@ -311,7 +305,7 @@ sub StandardTemplateUpdate {
     return 1;
 }
 
-=item StandardTemplateLookup()
+=head2 StandardTemplateLookup()
 
 return the name or the std template id
 
@@ -389,7 +383,7 @@ sub StandardTemplateLookup {
     return $Self->{"StandardTemplate$Suffix"};
 }
 
-=item StandardTemplateList()
+=head2 StandardTemplateList()
 
 get all valid std templatess
 
@@ -472,7 +466,7 @@ sub StandardTemplateList {
     return %Data;
 }
 
-=item NameExistsCheck()
+=head2 NameExistsCheck()
 
     return 1 if another standard template with this name already exists
 
@@ -508,8 +502,6 @@ sub NameExistsCheck {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

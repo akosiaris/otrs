@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,6 +12,8 @@ use strict;
 use warnings;
 
 our $ObjectManagerDisabled = 1;
+
+use Kernel::Language qw(Translatable);
 
 sub new {
     my ( $Type, %Param ) = @_;
@@ -79,7 +81,9 @@ sub Run {
     elsif ( $Self->{Subaction} eq 'Upload' ) {
 
         if ( !$ConfigObject->Get('ConfigImportAllowed') ) {
-            return $LayoutObject->FatalError( Message => "Import not allowed!" );
+            return $LayoutObject->FatalError(
+                Message => Translatable('Import not allowed!'),
+            );
         }
 
         # challenge token check for write action
@@ -91,7 +95,7 @@ sub Run {
         );
         if ( !%UploadStuff ) {
             return $LayoutObject->ErrorScreen(
-                Message => 'Need File!',
+                Message => Translatable('Need File!'),
             );
         }
         elsif ( $SysConfigObject->Upload( Content => $UploadStuff{Content} ) ) {
@@ -162,7 +166,9 @@ sub Run {
                     Valid => $Active,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
                 next ITEM;
             }
@@ -180,7 +186,9 @@ sub Run {
                     Valid => $Active,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -197,7 +205,9 @@ sub Run {
                     Valid => $Active,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -212,7 +222,9 @@ sub Run {
                     Valid => $Active,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -312,9 +324,14 @@ sub Run {
                 my $New = $ParamObject->GetParam(
                     Param => $ItemHash{Name} . '#NewHashElement'
                 );
+
+                # do not validate if the new button was clicked
+                my %NoValidationOption;
+
                 if ($New) {
-                    $Anker = $ItemHash{Name};
-                    $Content{''} = '';
+                    $Anker                            = $ItemHash{Name};
+                    $Content{''}                      = '';
+                    $NoValidationOption{NoValidation} = 1;
                 }
 
                 # write ConfigItem
@@ -322,9 +339,12 @@ sub Run {
                     Key   => $_,
                     Value => \%Content,
                     Valid => $Active,
+                    %NoValidationOption,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -336,9 +356,14 @@ sub Run {
                 my $New = $ParamObject->GetParam(
                     Param => $ItemHash{Name} . '#NewArrayElement'
                 );
+
+                # do not validate if the new button was clicked
+                my %NoValidationOption;
+
                 if ($New) {
                     push @Content, '';
                     $Anker = $ItemHash{Name};
+                    $NoValidationOption{NoValidation} = 1;
                 }
 
                 # Delete Array Element
@@ -357,9 +382,12 @@ sub Run {
                     Key   => $_,
                     Value => \@Content,
                     Valid => $Active,
+                    %NoValidationOption,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -570,7 +598,9 @@ sub Run {
                     Valid => $Active,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -617,7 +647,9 @@ sub Run {
                     Valid => $Active,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -664,7 +696,9 @@ sub Run {
                 );
 
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -685,7 +719,9 @@ sub Run {
                     Valid => $Active,
                 );
                 if ( !$Update ) {
-                    $LayoutObject->FatalError( Message => "Can't write ConfigItem!" );
+                    $LayoutObject->FatalError(
+                        Message => Translatable('Can\'t write ConfigItem!'),
+                    );
                 }
             }
 
@@ -969,7 +1005,7 @@ sub Run {
 
         $LayoutObject->Block( Name => 'OverviewResult' );
 
-        %List = $SysConfigObject->ConfigSubGroupList( Name => $Group );
+        %List = $SysConfigObject->ConfigSubGroupList( Name => $Group ) if $Group;
 
         # if there are any results, they are shown
         if (%List) {
@@ -1152,12 +1188,19 @@ sub ListConfigItem {
                 $Default = $Option->{Item}->[$Index]->{Content};
             }
         }
+        my $Translate = 1;
+        if ( $Option->{Location} ) {
+
+            # Entries coming from the file system should not be translated.
+            $Translate = 0;
+        }
         my $PulldownMenu = $LayoutObject->BuildSelection(
-            Data       => \%Hash,
-            SelectedID => $Option->{SelectedID},
-            Name       => $ItemHash{Name},
-            Disabled   => $ReadOnlyAttribute ? 1 : 0,
-            Class      => 'Modernize',
+            Data        => \%Hash,
+            SelectedID  => $Option->{SelectedID},
+            Name        => $ItemHash{Name},
+            Disabled    => $ReadOnlyAttribute ? 1 : 0,
+            Class       => 'Modernize',
+            Translation => $Translate,
         );
         $LayoutObject->Block(
             Name => 'ConfigElementSelect',

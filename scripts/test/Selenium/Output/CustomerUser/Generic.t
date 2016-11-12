@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -19,19 +19,12 @@ $Selenium->RunTest(
     sub {
 
         # get helper object
-        $Kernel::OM->ObjectParamAdd(
-            'Kernel::System::UnitTest::Helper' => {
-                RestoreSystemConfiguration => 1,
-            },
-        );
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
-        $Kernel::OM->Get('Kernel::Config')->Set(
+        $Helper->ConfigSettingChange(
             Key   => 'CheckEmailAddresses',
             Value => 0,
         );
-
-        my $SysConfigObject = $Kernel::OM->Get('Kernel::System::SysConfig');
 
         # enable CustomerUserGenericTicket sysconfig
         my @CustomerSysConfig = ( '1-GoogleMaps', '2-Google', '2-LinkedIn', '3-XING' );
@@ -40,7 +33,7 @@ $Selenium->RunTest(
 
             # get default sysconfig
             my $SysConfigName  = 'Frontend::CustomerUser::Item###' . $SysConfigChange;
-            my %CustomerConfig = $SysConfigObject->ConfigItemGet(
+            my %CustomerConfig = $Kernel::OM->Get('Kernel::System::SysConfig')->ConfigItemGet(
                 Name    => $SysConfigName,
                 Default => 1,
             );
@@ -54,14 +47,14 @@ $Selenium->RunTest(
             %CustomerConfig = map { $_->{Key} => $_->{Content} }
                 grep { defined $_->{Key} } @{ $CustomerConfig{Setting}->[1]->{Hash}->[1]->{Item} };
 
-            $SysConfigObject->ConfigItemUpdate(
+            $Helper->ConfigSettingChange(
                 Valid => 1,
                 Key   => $SysConfigName,
                 Value => \%CustomerConfig,
             );
         }
 
-        # create and log in test user
+        # create test user and login
         my $TestUserLogin = $Helper->TestUserCreate(
             Groups => [ 'admin', 'users' ],
         ) || die "Did not get test user";
@@ -93,6 +86,11 @@ $Selenium->RunTest(
             UserID         => $TestUserID,
         );
 
+        $Self->True(
+            $TestCustomerUser,
+            "Created customer user - $TestCustomerUser",
+        );
+
         # get ticket object
         my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
 
@@ -115,7 +113,7 @@ $Selenium->RunTest(
 
         # go to zoom view of created test ticket
         my $ScriptAlias = $Kernel::OM->Get('Kernel::Config')->Get('ScriptAlias');
-        $Selenium->get("${ScriptAlias}index.pl?Action=AgentTicketZoom;TicketID=$TicketID");
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AgentTicketZoom;TicketID=$TicketID");
 
         # check for CustomerUserGeneric link text
         for my $TestText (@CustomerUserGenericText) {
@@ -144,6 +142,11 @@ $Selenium->RunTest(
             $Success,
             "Deleted CustomerUser - $TestCustomerUser",
         );
+
+        # make sure the cache is correct
+        for my $Cache (qw(Ticket CustomerUser)) {
+            $Kernel::OM->Get('Kernel::System::Cache')->CleanUp( Type => $Cache );
+        }
     }
 );
 

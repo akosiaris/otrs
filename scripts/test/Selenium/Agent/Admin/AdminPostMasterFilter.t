@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -12,17 +12,23 @@ use utf8;
 
 use vars (qw($Self));
 
-# get needed objects
-my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
-my $Selenium     = $Kernel::OM->Get('Kernel::System::UnitTest::Selenium');
+use Kernel::Language;
+
+# get selenium object
+my $Selenium = $Kernel::OM->Get('Kernel::System::UnitTest::Selenium');
 
 $Selenium->RunTest(
     sub {
 
+        # get helper object
         my $Helper = $Kernel::OM->Get('Kernel::System::UnitTest::Helper');
 
+        my $Language = 'de';
+
+        # create test user and login
         my $TestUserLogin = $Helper->TestUserCreate(
-            Groups => ['admin'],
+            Language => $Language,
+            Groups   => ['admin'],
         ) || die "Did not get test user";
 
         $Selenium->Login(
@@ -31,27 +37,36 @@ $Selenium->RunTest(
             Password => $TestUserLogin,
         );
 
+        # get needed objects
+        my $ConfigObject   = $Kernel::OM->Get('Kernel::Config');
+        my $LanguageObject = Kernel::Language->new(
+            UserLanguage => $Language,
+        );
+
+        # get script alias
         my $ScriptAlias = $ConfigObject->Get('ScriptAlias');
 
-        $Selenium->get("${ScriptAlias}index.pl?Action=AdminPostMasterFilter");
-
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        # navigate to AdminPostMasterFilter screen
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AdminPostMasterFilter");
 
         # check overview AdminPostMasterFilter
         $Selenium->find_element( "table",             'css' );
         $Selenium->find_element( "table thead tr th", 'css' );
         $Selenium->find_element( "table tbody tr td", 'css' );
 
-        # click 'Add filter'
-        $Selenium->find_element("//a[contains(\@href, \'Action=AdminPostMasterFilter;Subaction=AddAction' )]")->click();
+        # check breadcrumb on Overview screen
+        $Self->True(
+            $Selenium->find_element( '.BreadCrumb', 'css' ),
+            "Breadcrumb is found on Overview screen.",
+        );
 
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("#EditName").length' );
+        # click 'Add filter'
+        $Selenium->find_element("//a[contains(\@href, \'Action=AdminPostMasterFilter;Subaction=AddAction' )]")
+            ->VerifiedClick();
 
         # check client side validation
         $Selenium->find_element( "#EditName", 'css' )->clear();
-        $Selenium->find_element( "#EditName", 'css' )->submit();
+        $Selenium->find_element( "#EditName", 'css' )->VerifiedSubmit();
         $Self->Is(
             $Selenium->execute_script(
                 "return \$('#EditName').hasClass('Error')"
@@ -86,38 +101,47 @@ $Selenium->RunTest(
             }
         }
 
+        # check breadcrumb on Add screen
+        my $SecondBreadcrumbText = $LanguageObject->Translate('PostMaster Filter Management');
+        my $ThirdBreadcrumbText  = $LanguageObject->Translate('Add PostMaster Filter');
+        my $Count                = 1;
+        for my $BreadcrumbText ( $SecondBreadcrumbText, $ThirdBreadcrumbText ) {
+            $Self->Is(
+                $Selenium->execute_script("return \$('.BreadCrumb li:eq($Count)').text().trim()"),
+                $BreadcrumbText,
+                "Breadcrumb text '$BreadcrumbText' is found on screen"
+            );
+
+            $Count++;
+        }
+
         # add test PostMasterFilter
-        my $PostMasterRandomID = "postmasterfilter" . $Helper->GetRandomID();
+        my $PostMasterName     = "postmasterfilter" . $Helper->GetRandomID();
         my $PostMasterBody     = "Selenium test for PostMasterFilter";
         my $PostMasterPriority = "2 low";
 
-        $Selenium->find_element( "#EditName", 'css' )->send_keys($PostMasterRandomID);
+        $Selenium->find_element( "#EditName", 'css' )->send_keys($PostMasterName);
         $Selenium->execute_script("\$('#MatchHeader1').val('Body').trigger('redraw.InputField').trigger('change');");
-        $Selenium->find_element( "#MatchNot1",   'css' )->click();
+        $Selenium->find_element( "#MatchNot1",   'css' )->VerifiedClick();
         $Selenium->find_element( "#MatchValue1", 'css' )->send_keys($PostMasterBody);
         $Selenium->execute_script(
             "\$('#SetHeader1').val('X-OTRS-Priority').trigger('redraw.InputField').trigger('change');"
         );
         $Selenium->find_element( "#SetValue1", 'css' )->send_keys($PostMasterPriority);
-        $Selenium->find_element( "#EditName",  'css' )->submit();
-
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        $Selenium->find_element( "#EditName",  'css' )->VerifiedSubmit();
 
         # check for created test PostMasterFilter on screen
         $Self->True(
-            index( $Selenium->get_page_source(), $PostMasterRandomID ) > -1,
-            "$PostMasterRandomID PostMasterFilter found on page",
+            index( $Selenium->get_page_source(), $PostMasterName ) > -1,
+            "$PostMasterName PostMasterFilter found on page",
         );
 
         # check new test PostMasterFilter values
-        $Selenium->find_element( $PostMasterRandomID, 'link_text' )->click();
+        $Selenium->find_element( $PostMasterName, 'link_text' )->VerifiedClick();
 
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("#EditName").length' );
         $Self->Is(
             $Selenium->find_element( '#EditName', 'css' )->get_value(),
-            $PostMasterRandomID,
+            $PostMasterName,
             "#EditName stored value",
         );
         $Self->Is(
@@ -146,23 +170,31 @@ $Selenium->RunTest(
             "#SetValue1 stored value",
         );
 
+        # check breadcrumb on Edit screen
+        $Count               = 1;
+        $ThirdBreadcrumbText = $LanguageObject->Translate('Edit PostMaster Filter') . ": $PostMasterName";
+        for my $BreadcrumbText ( $SecondBreadcrumbText, $ThirdBreadcrumbText ) {
+            $Self->Is(
+                $Selenium->execute_script("return \$('.BreadCrumb li:eq($Count)').text().trim()"),
+                $BreadcrumbText,
+                "Breadcrumb text '$BreadcrumbText' is found on screen"
+            );
+
+            $Count++;
+        }
+
         # edit test PostMasterFilter
         my $EditPostMasterPriority = "4 high";
 
         $Selenium->execute_script("\$('#StopAfterMatch').val('1').trigger('redraw.InputField').trigger('change');");
-        $Selenium->find_element( "#MatchNot1", 'css' )->click();
+        $Selenium->find_element( "#MatchNot1", 'css' )->VerifiedClick();
         $Selenium->find_element( "#SetValue1", 'css' )->clear();
         $Selenium->find_element( "#SetValue1", 'css' )->send_keys($EditPostMasterPriority);
-        $Selenium->find_element( "#EditName",  'css' )->submit();
-
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        $Selenium->find_element( "#EditName",  'css' )->VerifiedSubmit();
 
         # check edited test PostMasterFilter values
-        $Selenium->find_element( $PostMasterRandomID, 'link_text' )->click();
+        $Selenium->find_element( $PostMasterName, 'link_text' )->VerifiedClick();
 
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("#StopAfterMatch").length' );
         $Self->Is(
             $Selenium->find_element( '#StopAfterMatch', 'css' )->get_value(),
             1,
@@ -179,20 +211,81 @@ $Selenium->RunTest(
             "#SetValue1 updated value",
         );
 
+        # Make sure that 0 can be stored in match and set as well (see http://bugs.otrs.org/show_bug.cgi?id=12218)
+        $Selenium->find_element( "#MatchValue1", 'css' )->clear();
+        $Selenium->find_element( "#MatchValue1", 'css' )->send_keys('0');
+        $Selenium->find_element( "#SetValue1",   'css' )->clear();
+        $Selenium->find_element( "#SetValue1",   'css' )->send_keys('0');
+        $Selenium->find_element( "#EditName",    'css' )->VerifiedSubmit();
+
+        # check edited test PostMasterFilter values
+        $Selenium->find_element( $PostMasterName, 'link_text' )->VerifiedClick();
+
+        $Self->Is(
+            $Selenium->find_element( '#MatchValue1', 'css' )->get_value(),
+            0,
+            "#SetValue1 updated value",
+        );
+
+        $Self->Is(
+            $Selenium->find_element( '#SetValue1', 'css' )->get_value(),
+            0,
+            "#SetValue1 updated value",
+        );
+
         # go back to AdminPostMasterFilter screen
-        $Selenium->get("${ScriptAlias}index.pl?Action=AdminPostMasterFilter");
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AdminPostMasterFilter");
 
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        my $ConfirmJS = <<"JAVASCRIPT";
+(function () {
+    var lastConfirm = undefined;
+    window.confirm = function (message) {
+        lastConfirm = message;
+        return false; // stop action at first try
+    };
+    window.getLastConfirm = function () {
+        var result = lastConfirm;
+        lastConfirm = undefined;
+        return result;
+    };
+}());
+JAVASCRIPT
 
-        # delete test PostMasterFilter with delete button
-        $Selenium->find_element("//a[contains(\@href, \'Subaction=Delete;Name=$PostMasterRandomID' )]")->click();
+        $Selenium->execute_script($ConfirmJS);
+        $Selenium->find_element(
+            "//a[contains(\@href, \'Subaction=Delete;Name=$PostMasterName' )]"
+        )->VerifiedClick();
 
-        # wait until page has loaded, if neccessary
-        $Selenium->WaitFor( JavaScript => 'return typeof($) === "function" && $("body").length' );
+        $Self->Is(
+            $Selenium->execute_script("return window.getLastConfirm()"),
+            $LanguageObject->Translate('Do you really want to delete this filter?'),
+            'Dialog window text is correct',
+        );
+
+        my $CheckConfirmJS = <<"JAVASCRIPT";
+(function () {
+    window.confirm = function () {
+        return true; // allow action at second try
+    };
+}());
+JAVASCRIPT
+
+        $Selenium->execute_script($CheckConfirmJS);
+        $Selenium->find_element(
+            "//a[contains(\@href, \'Subaction=Delete;Name=$PostMasterName' )]"
+        )->VerifiedClick();
+
+        # navigate to AdminPostMasterFilter screen
+        $Selenium->VerifiedGet("${ScriptAlias}index.pl?Action=AdminPostMasterFilter");
+
+        # check up if postmaster filter is deleted
+        $Self->Is(
+            $Selenium->execute_script("return \$('#PostMasterFilters a.AsBlock[href*=$PostMasterName]').length"),
+            0,
+            "Postmaster Filter $PostMasterName is deleted",
+        );
 
     }
-
 );
 
 1;

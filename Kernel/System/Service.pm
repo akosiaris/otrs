@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -27,22 +27,16 @@ our @ObjectDependencies = (
 
 Kernel::System::Service - service lib
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 All service functions.
 
 =head1 PUBLIC INTERFACE
 
-=over 4
-
-=cut
-
-=item new()
+=head2 new()
 
 create an object
 
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $ServiceObject = $Kernel::OM->Get('Kernel::System::Service');
 
 =cut
@@ -67,7 +61,7 @@ sub new {
     return $Self;
 }
 
-=item ServiceList()
+=head2 ServiceList()
 
 return a hash list of services
 
@@ -184,7 +178,7 @@ sub ServiceList {
     return %ServiceList;
 }
 
-=item ServiceListGet()
+=head2 ServiceListGet()
 
 return a list of services with the complete list of attributes for each service
 
@@ -325,7 +319,7 @@ sub ServiceListGet {
     return \@ServiceList;
 }
 
-=item ServiceGet()
+=head2 ServiceGet()
 
 return a service as hash
 
@@ -465,7 +459,7 @@ sub ServiceGet {
     return %ServiceData;
 }
 
-=item ServiceLookup()
+=head2 ServiceLookup()
 
 return a service name and id
 
@@ -563,7 +557,7 @@ sub ServiceLookup {
     }
 }
 
-=item ServiceAdd()
+=head2 ServiceAdd()
 
 add a service
 
@@ -678,7 +672,7 @@ sub ServiceAdd {
     return $ServiceID;
 }
 
-=item ServiceUpdate()
+=head2 ServiceUpdate()
 
 update an existing service
 
@@ -835,7 +829,7 @@ sub ServiceUpdate {
     return 1;
 }
 
-=item ServiceSearch()
+=head2 ServiceSearch()
 
 return service ids as an array
 
@@ -900,7 +894,7 @@ sub ServiceSearch {
     return @ServiceList;
 }
 
-=item CustomerUserServiceMemberList()
+=head2 CustomerUserServiceMemberList()
 
 returns a list of customeruser/service members
 
@@ -1073,7 +1067,7 @@ sub CustomerUserServiceMemberList {
     return @Data;
 }
 
-=item CustomerUserServiceMemberAdd()
+=head2 CustomerUserServiceMemberAdd()
 
 to add a member to a service
 
@@ -1134,7 +1128,7 @@ sub CustomerUserServiceMemberAdd {
     return $Success;
 }
 
-=item ServicePreferencesSet()
+=head2 ServicePreferencesSet()
 
 set service preferences
 
@@ -1158,7 +1152,7 @@ sub ServicePreferencesSet {
     return 1;
 }
 
-=item ServicePreferencesGet()
+=head2 ServicePreferencesGet()
 
 get service preferences
 
@@ -1175,7 +1169,7 @@ sub ServicePreferencesGet {
     return $Self->{PreferencesObject}->ServicePreferencesGet(@_);
 }
 
-=item ServiceParentsGet()
+=head2 ServiceParentsGet()
 
 return an ordered list all parent service IDs for the given service from the root parent to the
 current service parent
@@ -1264,7 +1258,7 @@ sub ServiceParentsGet {
     return \@Data;
 }
 
-=item GetAllCustomServices()
+=head2 GetAllCustomServices()
 
 get all custom services of one user
 
@@ -1323,8 +1317,6 @@ sub GetAllCustomServices {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

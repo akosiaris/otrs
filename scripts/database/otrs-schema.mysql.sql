@@ -458,6 +458,7 @@ CREATE TABLE ticket_history (
     change_time DATETIME NOT NULL,
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id),
+    INDEX ticket_history_article_id (article_id),
     INDEX ticket_history_create_time (create_time),
     INDEX ticket_history_history_type_id (history_type_id),
     INDEX ticket_history_owner_id (owner_id),
@@ -576,15 +577,15 @@ CREATE TABLE article (
     ticket_id BIGINT NOT NULL,
     article_type_id SMALLINT NOT NULL,
     article_sender_type_id SMALLINT NOT NULL,
-    a_from TEXT NULL,
-    a_reply_to TEXT NULL,
-    a_to TEXT NULL,
-    a_cc TEXT NULL,
+    a_from MEDIUMTEXT NULL,
+    a_reply_to MEDIUMTEXT NULL,
+    a_to MEDIUMTEXT NULL,
+    a_cc MEDIUMTEXT NULL,
     a_subject TEXT NULL,
     a_message_id TEXT NULL,
     a_message_id_md5 VARCHAR (32) NULL,
-    a_in_reply_to TEXT NULL,
-    a_references TEXT NULL,
+    a_in_reply_to MEDIUMTEXT NULL,
+    a_references MEDIUMTEXT NULL,
     a_content_type VARCHAR (250) NULL,
     a_body MEDIUMTEXT NOT NULL,
     incoming_time INTEGER NOT NULL,
@@ -1172,14 +1173,12 @@ CREATE TABLE gi_webservice_config (
     id INTEGER NOT NULL AUTO_INCREMENT,
     name VARCHAR (200) NOT NULL,
     config LONGBLOB NOT NULL,
-    config_md5 VARCHAR (32) NOT NULL,
     valid_id SMALLINT NOT NULL,
     create_time DATETIME NOT NULL,
     create_by INTEGER NOT NULL,
     change_time DATETIME NOT NULL,
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id),
-    UNIQUE INDEX gi_webservice_config_config_md5 (config_md5),
     UNIQUE INDEX gi_webservice_config_name (name)
 );
 # ----------------------------------------------------------
@@ -1226,20 +1225,6 @@ CREATE TABLE gi_debugger_entry_content (
     INDEX gi_debugger_entry_content_debug_level (debug_level)
 );
 # ----------------------------------------------------------
-#  create table gi_object_lock_state
-# ----------------------------------------------------------
-CREATE TABLE gi_object_lock_state (
-    webservice_id INTEGER NOT NULL,
-    object_type VARCHAR (30) NOT NULL,
-    object_id BIGINT NOT NULL,
-    lock_state VARCHAR (30) NOT NULL,
-    lock_state_counter INTEGER NOT NULL,
-    create_time DATETIME NOT NULL,
-    change_time DATETIME NOT NULL,
-    UNIQUE INDEX gi_object_lock_state_list (webservice_id, object_type, object_id),
-    INDEX object_lock_state_list_state (webservice_id, object_type, object_id, lock_state)
-);
-# ----------------------------------------------------------
 #  create table smime_signer_cert_relations
 # ----------------------------------------------------------
 CREATE TABLE smime_signer_cert_relations (
@@ -1267,7 +1252,8 @@ CREATE TABLE dynamic_field_value (
     PRIMARY KEY(id),
     INDEX dynamic_field_value_field_values (object_id, field_id),
     INDEX dynamic_field_value_search_date (field_id, value_date),
-    INDEX dynamic_field_value_search_int (field_id, value_int)
+    INDEX dynamic_field_value_search_int (field_id, value_int),
+    INDEX dynamic_field_value_search_text (field_id, value_text(150))
 );
 # ----------------------------------------------------------
 #  create table dynamic_field
@@ -1288,6 +1274,16 @@ CREATE TABLE dynamic_field (
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id),
     UNIQUE INDEX dynamic_field_name (name)
+);
+# ----------------------------------------------------------
+#  create table dynamic_field_obj_id_name
+# ----------------------------------------------------------
+CREATE TABLE dynamic_field_obj_id_name (
+    object_id INTEGER NOT NULL AUTO_INCREMENT,
+    object_name VARCHAR (200) NOT NULL,
+    object_type VARCHAR (200) NOT NULL,
+    PRIMARY KEY(object_id),
+    UNIQUE INDEX dynamic_field_object_name (object_name, object_type)
 );
 # ----------------------------------------------------------
 #  create table pm_process
@@ -1442,13 +1438,11 @@ CREATE TABLE cloud_service_config (
     id INTEGER NOT NULL AUTO_INCREMENT,
     name VARCHAR (200) NOT NULL,
     config LONGBLOB NOT NULL,
-    config_md5 VARCHAR (32) NOT NULL,
     valid_id SMALLINT NOT NULL,
     create_time DATETIME NOT NULL,
     create_by INTEGER NOT NULL,
     change_time DATETIME NOT NULL,
     change_by INTEGER NOT NULL,
     PRIMARY KEY(id),
-    UNIQUE INDEX cloud_service_config_config_md5 (config_md5),
     UNIQUE INDEX cloud_service_config_name (name)
 );

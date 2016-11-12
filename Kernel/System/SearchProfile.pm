@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -21,22 +21,16 @@ our @ObjectDependencies = (
 
 Kernel::System::SearchProfile - module to manage search profiles
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 module with all functions to manage search profiles
 
 =head1 PUBLIC INTERFACE
 
-=over 4
+=head2 new()
 
-=cut
+Don't use the constructor directly, use the ObjectManager instead:
 
-=item new()
-
-create an object. Do not use it directly, instead use:
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
     my $SearchProfileObject = $Kernel::OM->Get('Kernel::System::SearchProfile');
 
 =cut
@@ -60,7 +54,7 @@ sub new {
     return $Self;
 }
 
-=item SearchProfileAdd()
+=head2 SearchProfileAdd()
 
 to add a search profile item
 
@@ -135,7 +129,7 @@ sub SearchProfileAdd {
     return 1;
 }
 
-=item SearchProfileGet()
+=head2 SearchProfileGet()
 
 returns hash with search profile.
 
@@ -205,7 +199,7 @@ sub SearchProfileGet {
     return %Result;
 }
 
-=item SearchProfileDelete()
+=head2 SearchProfileDelete()
 
 deletes a search profile.
 
@@ -262,7 +256,7 @@ sub SearchProfileDelete {
     return 1;
 }
 
-=item SearchProfileList()
+=head2 SearchProfileList()
 
 returns a hash of all profiles for the given user.
 
@@ -325,7 +319,7 @@ sub SearchProfileList {
     return %Result;
 }
 
-=item SearchProfileUpdateUserLogin()
+=head2 SearchProfileUpdateUserLogin()
 
 changes the UserLogin of SearchProfiles
 
@@ -388,8 +382,6 @@ sub SearchProfileUpdateUserLogin {
 }
 
 1;
-
-=back
 
 =head1 TERMS AND CONDITIONS
 

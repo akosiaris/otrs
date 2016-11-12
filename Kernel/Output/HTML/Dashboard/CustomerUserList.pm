@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -10,6 +10,8 @@ package Kernel::Output::HTML::Dashboard::CustomerUserList;
 
 use strict;
 use warnings;
+
+use Kernel::Language qw(Translatable);
 
 our $ObjectManagerDisabled = 1;
 
@@ -47,7 +49,7 @@ sub Preferences {
 
     my @Params = (
         {
-            Desc  => 'Shown customer users',
+            Desc  => Translatable('Shown customer users'),
             Name  => $Self->{PrefKey},
             Block => 'Option',
 
@@ -102,14 +104,14 @@ sub Run {
         . $LayoutObject->LinkEncode( $Param{CustomerID} ) . ';';
 
     my %PageNav = $LayoutObject->PageNavBar(
-        StartHit       => $Self->{StartHit},
-        PageShown      => $Self->{PageShown},
-        AllHits        => $Total || 1,
-        Action         => 'Action=' . $LayoutObject->{Action},
-        Link           => $LinkPage,
-        AJAXReplace    => 'Dashboard' . $Self->{Name},
-        IDPrefix       => 'Dashboard' . $Self->{Name},
-        KeepScriptTags => $Param{AJAX},
+        StartHit    => $Self->{StartHit},
+        PageShown   => $Self->{PageShown},
+        AllHits     => $Total || 1,
+        Action      => 'Action=' . $LayoutObject->{Action},
+        Link        => $LinkPage,
+        AJAXReplace => 'Dashboard' . $Self->{Name},
+        IDPrefix    => 'Dashboard' . $Self->{Name},
+        AJAX        => $Param{AJAX},
     );
 
     $LayoutObject->Block(
@@ -234,54 +236,96 @@ sub Run {
             );
         }
 
-        # do we need to show the chat link?
-        # should only be visible if
-        # 1. chat is active
-        # 2. current user has access to the chat
-        # 3. this customer user is online
-        my $ChatStartingAgentsGroup
-            = $Kernel::OM->Get('Kernel::Config')->Get('ChatEngine::PermissionGroup::ChatStartingAgents');
+        if ( $ConfigObject->Get('ChatEngine::Active') ) {
 
-        if (
-            $Kernel::OM->Get('Kernel::Config')->Get('ChatEngine::Active')
-            && defined $LayoutObject->{"UserIsGroup[$ChatStartingAgentsGroup]"}
-            && $LayoutObject->{"UserIsGroup[$ChatStartingAgentsGroup]"} eq 'Yes'
-            && $Kernel::OM->Get('Kernel::Config')->Get('ChatEngine::ChatDirection::AgentToCustomer')
-            )
-        {
+            # Check if agent has permission to start chats with the customer users.
+            my $EnableChat = 1;
+            my $ChatStartingAgentsGroup
+                = $ConfigObject->Get('ChatEngine::PermissionGroup::ChatStartingAgents') || 'users';
 
-            # check if this customer is actually online
-            my $SessionObject    = $Kernel::OM->Get('Kernel::System::AuthSession');
-            my @Sessions         = $SessionObject->GetAllSessionIDs();
-            my $CustomerIsOnline = 0;
-
-            SESSIONID:
-            for my $SessionID (@Sessions) {
-
-                next SESSIONID if !$SessionID;
-
-                # get session data
-                my %Data = $SessionObject->GetSessionIDData( SessionID => $SessionID );
-
-                next SESSIONID if !%Data;
-                next SESSIONID if !$Data{UserID};
-                next SESSIONID if $Data{UserID} ne $CustomerKey;
-
-                $CustomerIsOnline = 1;
+            if (
+                !defined $LayoutObject->{"UserIsGroup[$ChatStartingAgentsGroup]"}
+                || $LayoutObject->{"UserIsGroup[$ChatStartingAgentsGroup]"} ne 'Yes'
+                )
+            {
+                $EnableChat = 0;
+            }
+            if (
+                $EnableChat
+                && !$ConfigObject->Get('ChatEngine::ChatDirection::AgentToCustomer')
+                )
+            {
+                $EnableChat = 0;
             }
 
-            if ($CustomerIsOnline) {
+            if ($EnableChat) {
+                my $VideoChatEnabled = 0;
+                my $VideoChatAgentsGroup
+                    = $ConfigObject->Get('ChatEngine::PermissionGroup::VideoChatAgents') || 'users';
 
-                my $UserFullname = $Kernel::OM->Get('Kernel::System::CustomerUser')->CustomerName(
-                    UserLogin => $CustomerKey,
+                # Enable the video chat feature if system is entitled and agent is a member of configured group.
+                if (
+                    defined $Self->{"UserIsGroup[$VideoChatAgentsGroup]"}
+                    && $Self->{"UserIsGroup[$VideoChatAgentsGroup]"} eq 'Yes'
+                    )
+                {
+                    if ( $Kernel::OM->Get('Kernel::System::Main')->Require( 'Kernel::System::VideoChat', Silent => 1 ) )
+                    {
+                        $VideoChatEnabled = $Kernel::OM->Get('Kernel::System::VideoChat')->IsEnabled();
+                    }
+                }
+
+                my $CustomerEnableChat = 0;
+                my $ChatAccess         = 0;
+                my $VideoChatAvailable = 0;
+                my $VideoChatSupport   = 0;
+
+                # Default status is offline.
+                my $UserState            = Translatable('Offline');
+                my $UserStateDescription = $LayoutObject->{LanguageObject}->Translate('This user is currently offline');
+
+                my $CustomerChatAvailability = $Kernel::OM->Get('Kernel::System::Chat')->CustomerAvailabilityGet(
+                    UserID => $CustomerKey,
                 );
 
-                if ( $ConfigObject->Get('Ticket::Agent::StartChatWOTicket') ) {
+                my %CustomerUser = $Kernel::OM->Get('Kernel::System::CustomerUser')->CustomerUserDataGet(
+                    User => $CustomerKey,
+                );
+                $VideoChatSupport = 1 if $CustomerUser{VideoChatHasWebRTC};
+
+                if ( $CustomerChatAvailability == 3 ) {
+                    $UserState            = Translatable('Active');
+                    $CustomerEnableChat   = 1;
+                    $UserStateDescription = $LayoutObject->{LanguageObject}->Translate('This user is currently active');
+                    $VideoChatAvailable   = 1;
+                }
+                elsif ( $CustomerChatAvailability == 2 ) {
+                    $UserState            = Translatable('Away');
+                    $CustomerEnableChat   = 1;
+                    $UserStateDescription = $LayoutObject->{LanguageObject}->Translate('This user is currently away');
+                }
+
+                $LayoutObject->Block(
+                    Name => 'ContentLargeCustomerUserListRowUserStatus',
+                    Data => {
+                        %CustomerUser,
+                        UserState            => $UserState,
+                        UserStateDescription => $UserStateDescription,
+                    },
+                );
+
+                if (
+                    $CustomerEnableChat
+                    && $ConfigObject->Get('Ticket::Agent::StartChatWOTicket')
+                    )
+                {
                     $LayoutObject->Block(
-                        Name => 'ContentLargeCustomerUserListRowCustomerKeyChatStart',
+                        Name => 'ContentLargeCustomerUserListRowChatIcons',
                         Data => {
-                            UserFullname => $UserFullname,
-                            UserID       => $CustomerKey,
+                            %CustomerUser,
+                            VideoChatEnabled   => $VideoChatEnabled,
+                            VideoChatAvailable => $VideoChatAvailable,
+                            VideoChatSupport   => $VideoChatSupport,
                         },
                     );
                 }
@@ -298,32 +342,36 @@ sub Run {
             Permission           => $Self->{Config}->{Permission},
             UserID               => $Self->{UserID},
             CacheTTL             => $Self->{Config}->{CacheTTLLocal} * 60,
-        );
+        ) || 0;
+
+        my $CustomerKeySQL = $Kernel::OM->Get('Kernel::System::DB')->QueryStringEscape( QueryString => $CustomerKey );
 
         $LayoutObject->Block(
             Name => 'ContentLargeCustomerUserListRowCustomerUserTicketsOpen',
             Data => {
                 %Param,
-                Count       => $TicketCountOpen,
-                CustomerKey => $CustomerKey,
+                Count          => $TicketCountOpen,
+                CustomerKey    => $CustomerKey,
+                CustomerKeySQL => $CustomerKeySQL,
             },
         );
 
         my $TicketCountClosed = $TicketObject->TicketSearch(
-            StateType            => 'Closed',
+            StateType            => 'closed',
             CustomerUserLoginRaw => $CustomerKey,
             Result               => 'COUNT',
             Permission           => $Self->{Config}->{Permission},
             UserID               => $Self->{UserID},
             CacheTTL             => $Self->{Config}->{CacheTTLLocal} * 60,
-        );
+        ) || 0;
 
         $LayoutObject->Block(
             Name => 'ContentLargeCustomerUserListRowCustomerUserTicketsClosed',
             Data => {
                 %Param,
-                Count       => $TicketCountClosed,
-                CustomerKey => $CustomerKey,
+                Count          => $TicketCountClosed,
+                CustomerKey    => $CustomerKey,
+                CustomerKeySQL => $CustomerKeySQL,
             },
         );
 
@@ -378,15 +426,17 @@ sub Run {
         $Refresh = 60 * $Self->{UserRefreshTime};
         my $NameHTML = $Self->{Name};
         $NameHTML =~ s{-}{_}xmsg;
-        $LayoutObject->Block(
-            Name => 'ContentLargeTicketGenericRefresh',
-            Data => {
+
+        # send data to JS
+        $LayoutObject->AddJSData(
+            Key   => 'CustomerUserListRefresh',
+            Value => {
                 %{ $Self->{Config} },
                 Name        => $Self->{Name},
                 NameHTML    => $NameHTML,
                 RefreshTime => $Refresh,
                 CustomerID  => $Param{CustomerID},
-            },
+                }
         );
     }
 
@@ -396,7 +446,7 @@ sub Run {
             %{ $Self->{Config} },
             Name => $Self->{Name},
         },
-        KeepScriptTags => $Param{AJAX},
+        AJAX => $Param{AJAX},
     );
 
     return $Content;

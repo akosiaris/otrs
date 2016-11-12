@@ -1,5 +1,5 @@
 # --
-# Copyright (C) 2001-2015 OTRS AG, http://otrs.com/
+# Copyright (C) 2001-2016 OTRS AG, http://otrs.com/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
 # the enclosed file COPYING for license information (AGPL). If you
@@ -643,7 +643,7 @@ sub ForeignKeyCreate {
         );
         $ForeignKey = substr $ForeignKey, 0, 58;
         $ForeignKey .= substr $MD5, 0,  1;
-        $ForeignKey .= substr $MD5, 61, 1;
+        $ForeignKey .= substr $MD5, 31, 1;
     }
 
     # add foreign key
@@ -675,7 +675,7 @@ sub ForeignKeyDrop {
         );
         $ForeignKey = substr $ForeignKey, 0, 58;
         $ForeignKey .= substr $MD5, 0,  1;
-        $ForeignKey .= substr $MD5, 61, 1;
+        $ForeignKey .= substr $MD5, 31, 1;
     }
 
     # drop foreign key
